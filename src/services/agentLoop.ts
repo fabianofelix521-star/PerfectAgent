@@ -89,6 +89,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
 
     let raw = "";
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
       const stop = api.streamChat({
         spec,
         model,
@@ -100,12 +101,12 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
           raw += delta;
           onToken?.(delta);
         },
-        onDone: () => resolve(),
-        onError: (err) => reject(new Error(err)),
+        onDone: () => { if (!settled) { settled = true; resolve(); } },
+        onError: (err) => { if (!settled) { settled = true; reject(new Error(err)); } },
       });
       signal?.addEventListener("abort", () => {
         stop();
-        reject(new Error("aborted"));
+        if (!settled) { settled = true; reject(new Error("aborted")); }
       }, { once: true });
     });
 
@@ -223,6 +224,7 @@ async function autoFixFile(
   const recentLogs = logs.slice(-120).join("");
   let fixed = "";
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
     const stop = api.streamChat({
       spec,
       model,
@@ -237,10 +239,10 @@ async function autoFixFile(
         },
       ],
       onToken: (d) => { fixed += d; },
-      onDone: () => resolve(),
-      onError: (err) => reject(new Error(err)),
+      onDone: () => { if (!settled) { settled = true; resolve(); } },
+      onError: (err) => { if (!settled) { settled = true; reject(new Error(err)); } },
     });
-    signal?.addEventListener("abort", () => { stop(); reject(new Error("aborted")); }, { once: true });
+    signal?.addEventListener("abort", () => { stop(); if (!settled) { settled = true; reject(new Error("aborted")); } }, { once: true });
   });
 
   // Strip code fences if present

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -31,6 +31,99 @@ export function AIMessageRenderer({
   compact,
 }: AIMessageRendererProps) {
   const normalized = useMemo(() => normalizeMarkdown(markdown), [markdown]);
+  const components = {
+    h1: ({ children }) => (
+      <h1 className="mb-2 mt-3 text-xl font-semibold tracking-tight text-slate-950">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="mb-2 mt-3 text-lg font-semibold tracking-tight text-slate-950">
+        {children}
+      </h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="mb-1.5 mt-2.5 text-base font-semibold text-slate-950">
+        {children}
+      </h3>
+    ),
+    p: ({ children }) => (
+      <p className="my-2 first:mt-0 last:mb-0">{children}</p>
+    ),
+    ul: ({ children }) => (
+      <ul className="my-2 list-disc space-y-1 pl-5 marker:text-slate-400">
+        {children}
+      </ul>
+    ),
+    ol: ({ children }) => (
+      <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-slate-400">
+        {children}
+      </ol>
+    ),
+    li: ({ children }) => <li className="pl-1">{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote className="my-3 border-l-4 border-indigo-200 bg-indigo-50/60 px-3 py-2 text-slate-700">
+        {children}
+      </blockquote>
+    ),
+    a: ({ children, ...props }) => (
+      <a
+        {...props}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="font-semibold text-indigo-600 underline-offset-2 hover:underline"
+      >
+        {children}
+      </a>
+    ),
+    table: ({ children }) => (
+      <div className="my-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full border-collapse text-left text-xs">
+          {children}
+        </table>
+      </div>
+    ),
+    th: ({ children }) => (
+      <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-700">
+        {children}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">
+        {children}
+      </td>
+    ),
+    code({ className: codeClassName, children, node: _node, ...props }) {
+      const code = String(children).replace(/\n$/, "");
+      const language =
+        /language-([a-z0-9_-]+)/i.exec(codeClassName ?? "")?.[1] ??
+        inferCodeLanguage(code);
+      const isBlock = code.includes("\n") || Boolean(codeClassName);
+
+      if (isBlock && language !== "text") {
+        return (
+          <CodeBlockRenderer
+            language={language}
+            code={code}
+            enableApplyToEditor={enableApplyToEditor}
+            onApplyToEditor={onApplyToEditor}
+          />
+        );
+      }
+
+      return (
+        <code
+          className={cn(
+            "rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[0.86em] font-semibold text-slate-800",
+            codeClassName,
+          )}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+  } satisfies Components;
 
   return (
     <motion.div
@@ -45,98 +138,7 @@ export function AIMessageRenderer({
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={{
-          h1: ({ children }) => (
-            <h1 className="mb-2 mt-3 text-xl font-semibold tracking-tight text-slate-950">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="mb-2 mt-3 text-lg font-semibold tracking-tight text-slate-950">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="mb-1.5 mt-2.5 text-base font-semibold text-slate-950">
-              {children}
-            </h3>
-          ),
-          p: ({ children }) => (
-            <p className="my-2 first:mt-0 last:mb-0">{children}</p>
-          ),
-          ul: ({ children }) => (
-            <ul className="my-2 list-disc space-y-1 pl-5 marker:text-slate-400">
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-slate-400">
-              {children}
-            </ol>
-          ),
-          li: ({ children }) => <li className="pl-1">{children}</li>,
-          blockquote: ({ children }) => (
-            <blockquote className="my-3 border-l-4 border-indigo-200 bg-indigo-50/60 px-3 py-2 text-slate-700">
-              {children}
-            </blockquote>
-          ),
-          a: ({ children, ...props }) => (
-            <a
-              {...props}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="font-semibold text-indigo-600 underline-offset-2 hover:underline"
-            >
-              {children}
-            </a>
-          ),
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="min-w-full border-collapse text-left text-xs">
-                {children}
-              </table>
-            </div>
-          ),
-          th: ({ children }) => (
-            <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-700">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">
-              {children}
-            </td>
-          ),
-          code({ inline, className: codeClassName, children, ...props }: any) {
-            const code = String(children).replace(/\n$/, "");
-            const language =
-              /language-([a-z0-9_-]+)/i.exec(codeClassName ?? "")?.[1] ??
-              inferCodeLanguage(code);
-
-            if (!inline && (code.includes("\n") || language !== "text")) {
-              return (
-                <CodeBlockRenderer
-                  language={language}
-                  code={code}
-                  enableApplyToEditor={enableApplyToEditor}
-                  onApplyToEditor={onApplyToEditor}
-                />
-              );
-            }
-
-            return (
-              <code
-                className={cn(
-                  "rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[0.86em] font-semibold text-slate-800",
-                  codeClassName,
-                )}
-                {...props}
-              >
-                {children}
-              </code>
-            );
-          },
-        }}
+        components={components}
       >
         {normalized}
       </ReactMarkdown>

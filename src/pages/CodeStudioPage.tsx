@@ -32,9 +32,15 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
+import JSZip from "jszip";
+import { useNavigate } from "react-router-dom";
 import { SplitPane } from "@/components/SplitPane";
 import { ChatBubble } from "@/components/ChatBubble";
-import { DeviceFrame, type DeviceType, DEVICES } from "@/components/DeviceFrame";
+import {
+  DeviceFrame,
+  type DeviceType,
+  DEVICES,
+} from "@/components/DeviceFrame";
 import { toast } from "@/components/Toast";
 import {
   ensurePresetsRegistered,
@@ -56,6 +62,13 @@ import {
   prewarmWebContainer,
 } from "@/services/previewManager";
 import { webContainerService } from "@/services/webcontainer";
+import {
+  dispatchToPantheon,
+  extractTags,
+  pantheonContextFor,
+} from "@/services/morpheusBridge";
+import { MorpheusPanel } from "@/components/MorpheusPanel";
+import { SupremeCoordinatorPanel } from "@/components/SupremeCoordinatorPanel";
 import type { ChatMessageV2, ProjectFile } from "@/types";
 import { cn } from "@/utils/cn";
 
@@ -83,8 +96,31 @@ type MainTab = "chat-preview" | "code-deploy";
 type Device = DeviceType;
 
 export function CodeStudioPage() {
+  const navigate = useNavigate();
   const [mainTab, setMainTab] = useState<MainTab>("chat-preview");
   const [projectName, setProjectName] = useState("Untitled Project");
+  const projects = useConfig((s) => s.projects);
+  const activeProjectId = useConfig((s) => s.activeProjectId);
+  const activeProject = projects.find((project) => project.id === activeProjectId);
+
+  async function exportActiveProject() {
+    if (!activeProject) {
+      toast.error("Gere ou abra um projeto antes de exportar.");
+      return;
+    }
+    const zip = new JSZip();
+    for (const file of activeProject.files) zip.file(file.path, file.content);
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${activeProject.name || "project"}.zip`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Projeto exportado.");
+  }
 
   return (
     <section className="chat-surface app-scrollbar fx-fade-in flex h-full min-h-0 flex-col overflow-hidden rounded-[22px] border border-white/70 lg:rounded-[28px]">
@@ -92,7 +128,9 @@ export function CodeStudioPage() {
       <div className="flex shrink-0 items-center justify-between border-b border-white/60 px-4 py-2">
         <div className="flex items-center gap-3">
           <Code2 className="h-4 w-4 text-slate-600" />
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Code Studio</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+            Code Studio
+          </span>
           <input
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
@@ -117,13 +155,25 @@ export function CodeStudioPage() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <TopBarButton icon={Plus} tooltip="New Project" onClick={() => {
-            setProjectName("Untitled Project");
-            useConfig.getState().setActiveProject(undefined);
-            previewManager.reset();
-          }} />
-          <TopBarButton icon={Download} tooltip="Export ZIP" />
-          <TopBarButton icon={Settings} tooltip="Settings" />
+          <TopBarButton
+            icon={Plus}
+            tooltip="New Project"
+            onClick={() => {
+              setProjectName("Untitled Project");
+              useConfig.getState().setActiveProject(undefined);
+              previewManager.reset();
+            }}
+          />
+          <TopBarButton
+            icon={Download}
+            tooltip="Export ZIP"
+            onClick={() => void exportActiveProject()}
+          />
+          <TopBarButton
+            icon={Settings}
+            tooltip="Settings"
+            onClick={() => navigate("/settings/code-studio")}
+          />
         </div>
       </div>
 
@@ -141,15 +191,25 @@ export function CodeStudioPage() {
 
 /* ============================================================ Tab Buttons */
 
-function TabButton({ active, onClick, icon: Icon, label }: {
-  active: boolean; onClick: () => void; icon: typeof MessageSquare; label: string;
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: typeof MessageSquare;
+  label: string;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition",
-        active ? "bg-[#17172d] text-white shadow" : "text-slate-500 hover:text-slate-700",
+        active
+          ? "bg-[#17172d] text-white shadow"
+          : "text-slate-500 hover:text-slate-700",
       )}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -158,8 +218,14 @@ function TabButton({ active, onClick, icon: Icon, label }: {
   );
 }
 
-function TopBarButton({ icon: Icon, tooltip, onClick }: {
-  icon: typeof Plus; tooltip: string; onClick?: () => void;
+function TopBarButton({
+  icon: Icon,
+  tooltip,
+  onClick,
+}: {
+  icon: typeof Plus;
+  tooltip: string;
+  onClick?: () => void;
 }) {
   return (
     <button
@@ -174,7 +240,12 @@ function TopBarButton({ icon: Icon, tooltip, onClick }: {
 
 /* ============================================================ Compact Select */
 
-function CompactSelect({ value, onChange, options, placeholder }: {
+function CompactSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
   value: string;
   onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
@@ -188,7 +259,9 @@ function CompactSelect({ value, onChange, options, placeholder }: {
     >
       {placeholder && !value && <option value="">{placeholder}</option>}
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
       ))}
     </select>
   );
@@ -217,9 +290,13 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
   const setActiveProject = useConfig((s) => s.setActiveProject);
 
   // Resolved pickers
-  const providerOptions = useMemo(() => getProviderOptions(providers), [providers]);
+  const providerOptions = useMemo(
+    () => getProviderOptions(providers),
+    [providers],
+  );
   const resolvedProviderId = useMemo(
-    () => resolveProviderId(sel.providerId, settings.defaultProviderId, providers),
+    () =>
+      resolveProviderId(sel.providerId, settings.defaultProviderId, providers),
     [sel.providerId, settings.defaultProviderId, providers],
   );
   const modelOptions = useMemo(
@@ -227,7 +304,14 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
     [resolvedProviderId, providers, models],
   );
   const resolvedModelId = useMemo(
-    () => resolveModelId(sel.model, settings.defaultModelId, resolvedProviderId, providers, models),
+    () =>
+      resolveModelId(
+        sel.model,
+        settings.defaultModelId,
+        resolvedProviderId,
+        providers,
+        models,
+      ),
     [sel.model, settings.defaultModelId, resolvedProviderId, providers, models],
   );
   const resolvedRuntimeId = useMemo(
@@ -246,7 +330,9 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
 
   // Local state
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<ChatMessageV2["attachments"]>([]);
+  const [attachments, setAttachments] = useState<ChatMessageV2["attachments"]>(
+    [],
+  );
   const [streaming, setStreaming] = useState(false);
   const [device, setDevice] = useState<Device>("laptop");
   const [previewKey, setPreviewKey] = useState(0);
@@ -258,17 +344,27 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   // Preview state from manager
-  const [previewState, setPreviewState] = useState(() => previewManager.getState());
+  const [previewState, setPreviewState] = useState(() =>
+    previewManager.getState(),
+  );
   useEffect(() => previewManager.subscribe(setPreviewState), []);
 
   // Pre-warm WebContainer
-  useEffect(() => { void prewarmWebContainer(); }, []);
+  useEffect(() => {
+    void prewarmWebContainer();
+  }, []);
 
   // Ensure a thread exists
   useEffect(() => {
     ensurePresetsRegistered();
     if (threads.length === 0) {
-      const t = { id: `st-${uid()}`, title: "Code Studio", skillIds: [], messages: [], createdAt: Date.now() };
+      const t = {
+        id: `st-${uid()}`,
+        title: "Code Studio",
+        skillIds: [],
+        messages: [],
+        createdAt: Date.now(),
+      };
       addThread(t);
       setActiveThread(t.id);
     }
@@ -282,7 +378,10 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
   // Elapsed timer
   useEffect(() => {
     if (!streaming) return;
-    const id = setInterval(() => setElapsed(Date.now() - (previewState.startedAt || Date.now())), 250);
+    const id = setInterval(
+      () => setElapsed(Date.now() - (previewState.startedAt || Date.now())),
+      250,
+    );
     return () => clearInterval(id);
   }, [streaming, previewState.startedAt]);
 
@@ -320,7 +419,9 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
 
     // User message
     const userMsg: ChatMessageV2 = {
-      id: `u-${uid()}`, role: "user", content: text,
+      id: `u-${uid()}`,
+      role: "user",
+      content: text,
       attachments: attachments?.length ? attachments : undefined,
       createdAt: Date.now(),
     };
@@ -329,9 +430,14 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
     // Assistant placeholder
     const assistantId = `a-${uid()}`;
     appendMsg(thread.id, {
-      id: assistantId, role: "assistant", content: "",
-      createdAt: Date.now(), streaming: true,
-      providerId: resolvedProviderId, modelId: resolvedModelId, runtimeId: resolvedRuntimeId,
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+      streaming: true,
+      providerId: resolvedProviderId,
+      modelId: resolvedModelId,
+      runtimeId: resolvedRuntimeId,
     });
 
     setStreaming(true);
@@ -343,11 +449,14 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
     previewManager.startCycle(projectId);
 
     // Resolve provider spec
-    const spec = resolvedProviderId ? getRuntimeProviderSpec(resolvedProviderId) : undefined;
+    const spec = resolvedProviderId
+      ? getRuntimeProviderSpec(resolvedProviderId)
+      : undefined;
     if (!spec || !resolvedModelId) {
       patchMsg(thread.id, assistantId, {
         streaming: false,
-        content: "Configure um provedor e modelo em Configuracoes para gerar projetos.",
+        content:
+          "Configure um provedor e modelo em Configuracoes para gerar projetos.",
       });
       setStreaming(false);
       previewManager.reset();
@@ -355,21 +464,78 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
     }
 
     // Build system context from skills
-    const activeSkills = skills.filter((sk) => sk.enabled || (sel.skillIds ?? []).includes(sk.id));
-    const systemContext = activeSkills.length
-      ? activeSkills.map((sk) => `# ${sk.name}\n${sk.systemPrompt}`).join("\n\n---\n\n")
+    const activeSkills = skills.filter(
+      (sk) => sk.enabled || (sel.skillIds ?? []).includes(sk.id),
+    );
+    const skillContext = activeSkills.length
+      ? activeSkills
+          .map((sk) => `# ${sk.name}\n${sk.systemPrompt}`)
+          .join("\n\n---\n\n")
       : undefined;
 
     const ctrl = new AbortController();
-    stopRef.current = () => ctrl.abort();
+    let userStopped = false;
+    stopRef.current = () => {
+      userStopped = true;
+      ctrl.abort();
+    };
 
     let streamedContent = "";
 
+    // Route the prompt through the Pantheon (auction only — no LLM call).
+    // The winning agent's soulPrompt becomes additional system context for
+    // the SINGLE streamChat owned by runAgentLoop. Running a second stream
+    // here caused the backend to abort one of the two SSE connections, which
+    // surfaced as "This operation was aborted" in the chat.
+    const tags = extractTags(text);
+    let pantheonContext: string | undefined;
+    try {
+      const { winner, task: routerTask } = await dispatchToPantheon(text, {
+        tags,
+        timeoutMs: 1200,
+        onEvent: (ev) => {
+          if (ev.kind === "posted") {
+            previewManager.appendLog(
+              `[morpheus] task ${ev.task.id} posted [${tags.join(", ")}]`,
+            );
+          } else if (ev.kind === "assigned" && ev.agentName) {
+            previewManager.appendLog(`[morpheus] auctioned to ${ev.agentName}`);
+            streamedContent =
+              `🎭 **Pantheon → ${ev.agentName}** assumiu (\`${ev.task.id}\`)\n\n` +
+              streamedContent;
+            patchMsg(thread.id, assistantId, {
+              content: streamedContent,
+              streaming: true,
+            });
+          } else if (ev.kind === "failed") {
+            previewManager.appendLog(`[morpheus] task ${ev.task.id} failed`);
+          }
+        },
+      });
+      pantheonContext = pantheonContextFor(winner);
+      if (!winner) {
+        previewManager.appendLog(
+          `[morpheus] no agent bid on ${routerTask.id} — proceeding without persona`,
+        );
+      }
+    } catch (err) {
+      previewManager.appendLog(
+        `[morpheus] router failed: ${(err as Error).message}`,
+      );
+    }
+
+    const systemContext =
+      [pantheonContext, skillContext].filter(Boolean).join("\n\n---\n\n") ||
+      undefined;
+
     try {
       // Use adapter if runtime available, otherwise direct agent loop
-      const runtime = runtimes.find((r) => r.id === resolvedRuntimeId) ?? runtimes[0];
+      const runtime =
+        runtimes.find((r) => r.id === resolvedRuntimeId) ?? runtimes[0];
       const adapter = runtime ? createAdapter(runtime) : null;
-      const generate = adapter ? adapter.generateProject.bind(adapter) : runAgentLoop;
+      const generate = adapter
+        ? adapter.generateProject.bind(adapter)
+        : runAgentLoop;
 
       const result = await generate({
         request: text,
@@ -393,7 +559,10 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
           } else if (ev.phase === "debugging") {
             streamedContent += `\n${ev.message}\n`;
           }
-          patchMsg(thread.id, assistantId, { content: streamedContent, streaming: true });
+          patchMsg(thread.id, assistantId, {
+            content: streamedContent,
+            streaming: true,
+          });
         },
         onFiles: (generatedFiles) => {
           // Update project in store
@@ -417,27 +586,41 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
         },
         onToken: (delta) => {
           streamedContent += delta;
-          patchMsg(thread.id, assistantId, { content: streamedContent, streaming: true });
+          patchMsg(thread.id, assistantId, {
+            content: streamedContent,
+            streaming: true,
+          });
         },
       });
 
       // Finalize
+      const errMsg = result.error ?? "";
       const summary = result.ok
         ? `Projeto gerado em ${result.iterations} iteracao(oes). ${result.previewUrl ? "Preview ao vivo ativo." : "Preview estatico ativo."}`
-        : result.error ?? "Erro desconhecido";
+        : userStopped
+          ? "Geração cancelada pelo usuário."
+          : `❌ Falhou: ${errMsg || "erro desconhecido"}`;
 
       streamedContent += `\n\n---\n${summary}`;
-      patchMsg(thread.id, assistantId, { streaming: false, content: streamedContent });
+      patchMsg(thread.id, assistantId, {
+        streaming: false,
+        content: streamedContent,
+        error: result.ok || userStopped ? undefined : errMsg,
+      });
 
-      if (!result.ok && !previewState.staticSrcDoc) {
+      if (!result.ok && !userStopped && !previewState.staticSrcDoc) {
         previewManager.setError(result.error ?? "Generation failed");
       }
     } catch (err) {
       const msg = (err as Error).message;
-      if (!/abort/i.test(msg)) {
-        patchMsg(thread.id, assistantId, { streaming: false, error: msg, content: streamedContent || `Erro: ${msg}` });
-        previewManager.setError(msg);
-      }
+      patchMsg(thread.id, assistantId, {
+        streaming: false,
+        error: userStopped ? undefined : msg,
+        content: userStopped
+          ? streamedContent || "Geração cancelada pelo usuário."
+          : `${streamedContent}${streamedContent ? "\n\n---\n" : ""}❌ Erro: ${msg}`,
+      });
+      if (!userStopped) previewManager.setError(msg);
     } finally {
       setStreaming(false);
       stopRef.current = null;
@@ -455,12 +638,14 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
   const iframeSrcDoc = iframeUrl ? undefined : previewState.staticSrcDoc;
 
   // Format elapsed
-  const elapsedStr = elapsed < 1000 ? `${elapsed}ms` : `${(elapsed / 1000).toFixed(1)}s`;
-  const previewBadge = previewState.mode === "webcontainer"
-    ? { label: "Live", color: "bg-emerald-500" }
-    : previewState.mode === "static-iframe"
-      ? { label: "Static", color: "bg-blue-500" }
-      : null;
+  const elapsedStr =
+    elapsed < 1000 ? `${elapsed}ms` : `${(elapsed / 1000).toFixed(1)}s`;
+  const previewBadge =
+    previewState.mode === "webcontainer"
+      ? { label: "Live", color: "bg-emerald-500" }
+      : previewState.mode === "static-iframe"
+        ? { label: "Static", color: "bg-blue-500" }
+        : null;
 
   return (
     <SplitPane
@@ -477,14 +662,25 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
             <div className="flex flex-wrap items-center gap-1.5">
               <CompactSelect
                 value={resolvedProviderId ?? ""}
-                onChange={(v) => setSel({ providerId: v, model: getModelOptions(v, providers, models)[0]?.id })}
-                options={providerOptions.map((p) => ({ value: p.id, label: p.name }))}
+                onChange={(v) =>
+                  setSel({
+                    providerId: v,
+                    model: getModelOptions(v, providers, models)[0]?.id,
+                  })
+                }
+                options={providerOptions.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                }))}
                 placeholder="Provider"
               />
               <CompactSelect
                 value={resolvedModelId ?? ""}
                 onChange={(v) => setSel({ model: v })}
-                options={modelOptions.map((m) => ({ value: m.id, label: m.label }))}
+                options={modelOptions.map((m) => ({
+                  value: m.id,
+                  label: m.label,
+                }))}
                 placeholder="Model"
               />
               <CompactSelect
@@ -502,15 +698,42 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
             </div>
           </div>
 
+          {/* ---- Pantheon Strip ---- */}
+          <details className="shrink-0 border-b border-white/50 bg-white/30 px-3 py-1.5">
+            <summary className="cursor-pointer select-none text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 hover:text-slate-700">
+              🎭 Morpheus · Pantheon (12 agentes ligados ao chat & builder)
+            </summary>
+            <div className="mt-2 max-h-[40vh] overflow-y-auto pr-1">
+              <MorpheusPanel />
+            </div>
+          </details>
+
+          {/* ---- Supreme Coordinator Strip ---- */}
+          <details className="shrink-0 border-b border-white/50 bg-white/30 px-3 py-1.5">
+            <summary className="cursor-pointer select-none text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 hover:text-slate-700">
+              👑 Supreme Coordinator · Swarm (15 supervisores · agentes em TS)
+            </summary>
+            <div className="mt-2 max-h-[50vh] overflow-y-auto pr-1">
+              <SupremeCoordinatorPanel />
+            </div>
+          </details>
+
           {/* ---- Messages ---- */}
-          <div ref={scrollerRef} className="app-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          <div
+            ref={scrollerRef}
+            className="app-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2"
+          >
             {(activeThread?.messages ?? []).length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/60 shadow-sm">
                   <Code2 className="h-6 w-6 text-slate-300" />
                 </div>
-                <p className="text-sm font-semibold text-slate-500">Start a conversation to generate a project</p>
-                <p className="text-xs text-slate-400">Ex: "Create a Vite + React dashboard with charts"</p>
+                <p className="text-sm font-semibold text-slate-500">
+                  Start a conversation to generate a project
+                </p>
+                <p className="text-xs text-slate-400">
+                  Ex: "Create a Vite + React dashboard with charts"
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -525,9 +748,17 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
           {attachments && attachments.length > 0 && (
             <div className="shrink-0 flex flex-wrap gap-1.5 border-t border-white/50 px-3 py-1.5">
               {attachments.map((a, i) => (
-                <span key={i} className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                <span
+                  key={i}
+                  className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600"
+                >
                   <Paperclip className="h-2.5 w-2.5" /> {a.name}
-                  <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} className="text-rose-400 hover:text-rose-600">
+                  <button
+                    onClick={() =>
+                      setAttachments(attachments.filter((_, j) => j !== i))
+                    }
+                    className="text-rose-400 hover:text-rose-600"
+                  >
                     <X className="h-2.5 w-2.5" />
                   </button>
                 </span>
@@ -540,14 +771,25 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
             <div className="flex gap-2">
               <label className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/60 hover:text-slate-700">
                 <Paperclip className="h-4 w-4" />
-                <input type="file" multiple className="hidden" onChange={(e) => handleAttach(e.target.files)} />
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleAttach(e.target.files)}
+                />
               </label>
               <textarea
                 ref={taRef}
                 value={input}
-                onChange={(e) => { setInput(e.target.value); autoGrow(); }}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  autoGrow();
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
                 }}
                 placeholder="Describe what you want to build..."
                 rows={1}
@@ -555,17 +797,26 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
                 className="app-scrollbar min-h-[36px] flex-1 resize-none rounded-xl border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-300 focus:outline-none disabled:opacity-50"
               />
               {streaming ? (
-                <button onClick={handleStop} className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-xl bg-rose-500 text-white shadow hover:bg-rose-600">
+                <button
+                  onClick={handleStop}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-xl bg-rose-500 text-white shadow hover:bg-rose-600"
+                >
                   <Square className="h-4 w-4" />
                 </button>
               ) : (
-                <button onClick={handleSend} disabled={!input.trim()} className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-xl bg-[#17172d] text-white shadow hover:bg-slate-800 disabled:opacity-40">
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-xl bg-[#17172d] text-white shadow hover:bg-slate-800 disabled:opacity-40"
+                >
                   <Send className="h-4 w-4" />
                 </button>
               )}
               {activeThread && activeThread.messages.length > 0 && (
                 <button
-                  onClick={() => { if (confirm("Clear chat?")) clearThread(activeThread.id); }}
+                  onClick={() => {
+                    if (confirm("Clear chat?")) clearThread(activeThread.id);
+                  }}
                   title="Clear chat"
                   className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                 >
@@ -588,15 +839,28 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
                   title={DEVICES[d].label}
                   className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition",
-                    device === d ? "bg-white/80 text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600",
+                    device === d
+                      ? "bg-white/80 text-slate-900 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600",
                   )}
                 >
-                  {d === "laptop" ? <Monitor className="h-3.5 w-3.5" /> : d === "ipad" ? <Tablet className="h-3.5 w-3.5" /> : <Smartphone className="h-3.5 w-3.5" />}
+                  {d === "laptop" ? (
+                    <Monitor className="h-3.5 w-3.5" />
+                  ) : d === "ipad" ? (
+                    <Tablet className="h-3.5 w-3.5" />
+                  ) : (
+                    <Smartphone className="h-3.5 w-3.5" />
+                  )}
                 </button>
               ))}
               {iframeUrl && (
-                <a href={iframeUrl} target="_blank" rel="noreferrer" title="Open in browser"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/60 hover:text-slate-700">
+                <a
+                  href={iframeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open in browser"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/60 hover:text-slate-700"
+                >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
@@ -608,27 +872,42 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
                 {iframeUrl ?? "No preview URL"}
               </span>
               {iframeUrl && (
-                <button onClick={() => { navigator.clipboard?.writeText(iframeUrl); toast.success("Copied"); }}
-                  className="shrink-0 text-slate-400 hover:text-slate-700">
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(iframeUrl);
+                    toast.success("Copied");
+                  }}
+                  className="shrink-0 text-slate-400 hover:text-slate-700"
+                >
                   <Copy className="h-3 w-3" />
                 </button>
               )}
             </div>
 
             {/* Refresh */}
-            <button onClick={() => setPreviewKey((k) => k + 1)} title="Refresh preview"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-white/60 hover:text-slate-700">
+            <button
+              onClick={() => setPreviewKey((k) => k + 1)}
+              title="Refresh preview"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-white/60 hover:text-slate-700"
+            >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
 
             {/* Badge + Timer */}
             {previewBadge && (
-              <span className={cn("flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white", previewBadge.color)}>
+              <span
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white",
+                  previewBadge.color,
+                )}
+              >
                 {previewBadge.label}
               </span>
             )}
             {streaming && (
-              <span className="text-[10px] font-mono font-bold text-slate-500">T+{elapsedStr}</span>
+              <span className="text-[10px] font-mono font-bold text-slate-500">
+                T+{elapsedStr}
+              </span>
             )}
           </div>
 
@@ -649,7 +928,9 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <Eye className="h-10 w-10 text-slate-200" />
-                <p className="text-sm font-medium text-slate-400">Start a conversation to generate a project</p>
+                <p className="text-sm font-medium text-slate-400">
+                  Start a conversation to generate a project
+                </p>
                 <p className="text-xs text-slate-300">or choose a template</p>
               </div>
             )}
@@ -663,7 +944,12 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
                 >
                   <span className="h-2 w-2 rounded-full bg-rose-500" />
                   {previewState.errors.length} error(s)
-                  <ChevronDown className={cn("ml-auto h-3 w-3 transition", consoleOpen && "rotate-180")} />
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto h-3 w-3 transition",
+                      consoleOpen && "rotate-180",
+                    )}
+                  />
                 </button>
                 <AnimatePresence>
                   {consoleOpen && (
@@ -675,7 +961,12 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
                     >
                       <div className="h-40 overflow-y-auto p-2">
                         {previewState.errors.map((err, i) => (
-                          <p key={i} className="font-mono text-[10px] leading-4 text-rose-300">{err}</p>
+                          <p
+                            key={i}
+                            className="font-mono text-[10px] leading-4 text-rose-300"
+                          >
+                            {err}
+                          </p>
                         ))}
                       </div>
                     </motion.div>
@@ -695,12 +986,20 @@ function ChatPreviewTab({ projectName }: { projectName: string }) {
 function CodeDeployTab() {
   const projects = useConfig((s) => s.projects);
   const activeProjectId = useConfig((s) => s.activeProjectId);
-  const activeProject = useMemo(() => projects.find((p) => p.id === activeProjectId), [projects, activeProjectId]);
+  const updateProjectFile = useConfig((s) => s.updateProjectFile);
+  const setStoreActiveFile = useConfig((s) => s.setActiveFile);
+  const addDeploy = useConfig((s) => s.addDeploy);
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId),
+    [projects, activeProjectId],
+  );
 
   const [activeFile, setActiveFile] = useState<string | undefined>();
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [deployTarget, setDeployTarget] = useState("Vercel");
-  const [terminalLines, setTerminalLines] = useState<string[]>(["Welcome to Code Studio terminal."]);
+  const [terminalLines, setTerminalLines] = useState<string[]>([
+    "Welcome to Code Studio terminal.",
+  ]);
   const [terminalInput, setTerminalInput] = useState("");
 
   // Sync files from project
@@ -717,8 +1016,39 @@ function CodeDeployTab() {
   );
 
   function handleEditorChange(value: string | undefined) {
-    if (value === undefined || !activeFile) return;
-    setFiles((cur) => cur.map((f) => f.path === activeFile ? { ...f, content: value } : f));
+    if (value === undefined || !activeFile || !activeProject) return;
+    setFiles((cur) =>
+      cur.map((f) => (f.path === activeFile ? { ...f, content: value } : f)),
+    );
+    updateProjectFile(activeProject.id, activeFile, value);
+    if (webContainerService.isSupported()) {
+      webContainerService.writeFile(activeFile, value).catch((err: unknown) => {
+        setTerminalLines((cur) =>
+          [...cur, `Write failed: ${(err as Error).message}`].slice(-200),
+        );
+      });
+    }
+  }
+
+  function selectFile(path: string) {
+    setActiveFile(path);
+    if (activeProject) setStoreActiveFile(activeProject.id, path);
+  }
+
+  function handleDeploy() {
+    if (!activeProject) {
+      toast.error("Gere ou abra um projeto antes do deploy.");
+      return;
+    }
+    const record = {
+      id: `dep-${Date.now().toString(36)}`,
+      target: deployTarget,
+      status: "failed" as const,
+      at: Date.now(),
+      log: `${deployTarget} não possui credenciais/endpoints configurados nesta instalação local. Exporte o ZIP ou conecte uma integração primeiro.`,
+    };
+    addDeploy(record);
+    toast.error("Deploy externo não configurado. Registro salvo no histórico.");
   }
 
   async function handleTerminalSubmit() {
@@ -765,12 +1095,14 @@ function CodeDeployTab() {
               <FolderOpen className="h-3 w-3" /> Files
             </p>
             {files.length === 0 ? (
-              <p className="px-3 py-4 text-center text-[11px] text-slate-400">No files yet</p>
+              <p className="px-3 py-4 text-center text-[11px] text-slate-400">
+                No files yet
+              </p>
             ) : (
               files.map((f) => (
                 <button
                   key={f.path}
-                  onClick={() => setActiveFile(f.path)}
+                  onClick={() => selectFile(f.path)}
                   className={cn(
                     "flex w-full items-center gap-1.5 truncate px-3 py-1 text-left text-[11px] transition",
                     activeFile === f.path
@@ -790,7 +1122,9 @@ function CodeDeployTab() {
             {files.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                 <Code2 className="h-12 w-12 text-slate-200" />
-                <p className="text-sm text-slate-400">Generate a project first</p>
+                <p className="text-sm text-slate-400">
+                  Generate a project first
+                </p>
               </div>
             ) : (
               <Editor
@@ -825,10 +1159,20 @@ function CodeDeployTab() {
             <CompactSelect
               value={deployTarget}
               onChange={setDeployTarget}
-              options={["Vercel", "Netlify", "GitHub Pages", "Docker", "Custom"].map((t) => ({ value: t, label: t }))}
+              options={[
+                "Vercel",
+                "Netlify",
+                "GitHub Pages",
+                "Docker",
+                "Custom",
+              ].map((t) => ({ value: t, label: t }))}
               placeholder="Target"
             />
-            <button className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#17172d] px-3 py-2 text-xs font-bold text-white shadow hover:bg-slate-800">
+            <button
+              type="button"
+              onClick={handleDeploy}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#17172d] px-3 py-2 text-xs font-bold text-white shadow hover:bg-slate-800"
+            >
               <Rocket className="h-3.5 w-3.5" /> Deploy
             </button>
           </div>
@@ -837,12 +1181,16 @@ function CodeDeployTab() {
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-2 border-b border-white/50 px-3 py-1.5">
               <TerminalIcon className="h-3.5 w-3.5 text-slate-500" />
-              <span className="text-[11px] font-bold text-slate-600">Terminal</span>
+              <span className="text-[11px] font-bold text-slate-600">
+                Terminal
+              </span>
               <div className="ml-auto flex gap-1">
                 {["npm install", "npm run dev", "npm run build"].map((cmd) => (
                   <button
                     key={cmd}
-                    onClick={() => { setTerminalInput(cmd); }}
+                    onClick={() => {
+                      setTerminalInput(cmd);
+                    }}
                     className="rounded-md bg-white/60 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 hover:bg-white/80"
                   >
                     {cmd}
@@ -852,7 +1200,12 @@ function CodeDeployTab() {
             </div>
             <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto bg-slate-950 p-2">
               {terminalLines.map((line, i) => (
-                <p key={i} className="font-mono text-[10px] leading-4 text-emerald-300">{line}</p>
+                <p
+                  key={i}
+                  className="font-mono text-[10px] leading-4 text-emerald-300"
+                >
+                  {line}
+                </p>
               ))}
             </div>
             <div className="shrink-0 flex border-t border-white/10 bg-slate-900">
@@ -860,7 +1213,9 @@ function CodeDeployTab() {
               <input
                 value={terminalInput}
                 onChange={(e) => setTerminalInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleTerminalSubmit(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleTerminalSubmit();
+                }}
                 placeholder="Type a command..."
                 className="flex-1 bg-transparent px-2 py-1.5 font-mono text-[11px] text-slate-200 outline-none placeholder-slate-600"
               />

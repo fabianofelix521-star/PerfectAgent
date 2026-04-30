@@ -16,10 +16,11 @@ import { cn } from "@/utils/cn";
 
 type Tab = "models" | "general" | "security" | "appearance";
 
-export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("models");
+export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   useEffect(() => { ensurePresetsRegistered(); }, []);
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   return (
     <WorkspaceShell

@@ -140,6 +140,19 @@ function stringifySafe(value: unknown): string {
   }
 }
 
+function readFinalText(obj: Record<string, unknown>): string {
+  const keys = ["finalMarkdown", "final", "answer", "response", "result", "message", "content"];
+  for (const key of keys) {
+    if (typeof obj[key] === "string") return obj[key] as string;
+  }
+  if (isRecord(obj.output)) {
+    for (const key of keys) {
+      if (typeof obj.output[key] === "string") return obj.output[key] as string;
+    }
+  }
+  return "";
+}
+
 function safeParseJson(value: string): unknown | undefined {
   try {
     return JSON.parse(value);
@@ -519,17 +532,26 @@ export function normalizeMarkdown(markdown: string | undefined | null): string {
 }
 
 function extractFinalFromChunks(chunks: PipelineChunk[]): string {
+  const act = [...chunks].reverse().find((chunk) => chunk.stage === "act");
   const verify = [...chunks]
     .reverse()
     .find((chunk) => chunk.stage === "verify");
-  if (verify?.summary) return normalizeMarkdown(verify.summary);
-  if (verify?.content) return normalizeMarkdown(verify.content);
-
-  const act = [...chunks].reverse().find((chunk) => chunk.stage === "act");
-  if (act?.content) return normalizeMarkdown(act.content);
-  if (act?.summary) return normalizeMarkdown(act.summary);
+  const verifyText = verify?.summary ?? verify?.content;
+  const actText = act?.content ?? act?.summary;
+  if (actText && (!verifyText || isGenericVerification(verifyText))) {
+    return normalizeMarkdown(actText);
+  }
+  if (verifyText) return normalizeMarkdown(verifyText);
+  if (actText) return normalizeMarkdown(actText);
 
   return "";
+}
+
+function isGenericVerification(text: string): boolean {
+  const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
+  return /^(ok|true|validado|verificado|sem erros|done|completed)[.!]?$/.test(
+    normalized,
+  );
 }
 
 function fallbackFinalForPipeline(chunks: PipelineChunk[]): string {
@@ -637,13 +659,7 @@ export function normalizeAssistantOutput(
       const parsedChunks = objectToChunks(parsed);
       chunks.push(...parsedChunks);
       body =
-        typeof parsed.finalMarkdown === "string"
-          ? parsed.finalMarkdown
-          : typeof parsed.content === "string"
-            ? parsed.content
-            : typeof parsed.message === "string"
-              ? parsed.message
-              : "";
+        readFinalText(parsed);
       if (!body && parsedChunks.length === 0)
         chunks.push(
           makeChunk("debug", parsed, {
@@ -665,13 +681,7 @@ export function normalizeAssistantOutput(
   } else if (isRecord(raw)) {
     chunks.push(...objectToChunks(raw));
     body =
-      typeof raw.finalMarkdown === "string"
-        ? raw.finalMarkdown
-        : typeof raw.content === "string"
-          ? raw.content
-          : typeof raw.message === "string"
-            ? raw.message
-            : "";
+      readFinalText(raw);
     if (!body && chunks.length === 0)
       chunks.push(
         makeChunk("debug", raw, {

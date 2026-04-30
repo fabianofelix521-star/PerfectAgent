@@ -9,7 +9,9 @@ import { eventBus, type RunRecord, type PipelineEventData } from "@/services/eve
  * `import.meta.env.DEV` is true.
  */
 export function TimingHUD() {
-  const isDev = typeof import.meta !== "undefined" && (import.meta as any).env?.DEV;
+  const isDev = Boolean(
+    (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV,
+  );
   const [open, setOpen] = useState(true);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [last, setLast] = useState<RunRecord | null>(null);

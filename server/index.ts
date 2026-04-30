@@ -19,6 +19,14 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
 
 app.use(cors({ origin: true }));
+// Cross-Origin Resource Policy / Embedder Policy: required so the Vite dev page
+// (which sets COEP=require-corp for WebContainer) can consume responses from
+// this API on a different port. Without these headers the browser silently
+// terminates streaming responses, surfacing as "This operation was aborted".
+app.use((_req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
@@ -35,14 +43,17 @@ interface ProviderSpec {
   baseUrl: string;
   apiKey?: string;
   authMode?: AuthMode;
-  authHeaderName?: string;        // e.g. "x-api-key" for Anthropic
+  authHeaderName?: string; // e.g. "x-api-key" for Anthropic
   extraHeaders?: Record<string, string>;
   // for Azure / AWS / custom that need extra path bits:
   pathOverrides?: { chat?: string; models?: string };
 }
 
 function buildHeaders(spec: ProviderSpec): Record<string, string> {
-  const h: Record<string, string> = { "content-type": "application/json", ...(spec.extraHeaders ?? {}) };
+  const h: Record<string, string> = {
+    "content-type": "application/json",
+    ...(spec.extraHeaders ?? {}),
+  };
   if (!spec.apiKey || spec.authMode === "none") return h;
   switch (spec.authMode ?? "bearer") {
     case "bearer":
@@ -61,16 +72,18 @@ function buildHeaders(spec: ProviderSpec): Record<string, string> {
 function buildUrl(spec: ProviderSpec, kind: "chat" | "models"): string {
   const base = spec.baseUrl.replace(/\/+$/, "");
   const defaults = {
-    openai:    { chat: "/chat/completions", models: "/models" },
-    anthropic: { chat: "/messages",         models: "/models" },
-    gemini:    { chat: "/models",           models: "/models" },
-    ollama:    { chat: "/chat/completions", models: "/models" },
-    custom:    { chat: "/chat/completions", models: "/models" },
+    openai: { chat: "/chat/completions", models: "/models" },
+    anthropic: { chat: "/messages", models: "/models" },
+    gemini: { chat: "/models", models: "/models" },
+    ollama: { chat: "/chat/completions", models: "/models" },
+    custom: { chat: "/chat/completions", models: "/models" },
   } as const;
   const path = spec.pathOverrides?.[kind] ?? defaults[spec.shape][kind];
   let url = base + path;
   if (spec.authMode === "query" && spec.apiKey) {
-    url += (url.includes("?") ? "&" : "?") + `key=${encodeURIComponent(spec.apiKey)}`;
+    url +=
+      (url.includes("?") ? "&" : "?") +
+      `key=${encodeURIComponent(spec.apiKey)}`;
   }
   return url;
 }
@@ -79,14 +92,19 @@ function buildUrl(spec: ProviderSpec, kind: "chat" | "models"): string {
 
 app.post("/api/providers/test", async (req, res) => {
   const spec = req.body?.spec as ProviderSpec | undefined;
-  if (!spec?.baseUrl) return res.status(400).json({ ok: false, error: "missing spec.baseUrl" });
+  if (!spec?.baseUrl)
+    return res.status(400).json({ ok: false, error: "missing spec.baseUrl" });
   const url = buildUrl(spec, "models");
   const t0 = Date.now();
   try {
     const r = await fetch(url, { method: "GET", headers: buildHeaders(spec) });
     const text = await r.text();
     let json: unknown = null;
-    try { json = JSON.parse(text); } catch { /* keep raw */ }
+    try {
+      json = JSON.parse(text);
+    } catch {
+      /* keep raw */
+    }
     return res.json({
       ok: r.ok,
       status: r.status,
@@ -95,17 +113,28 @@ app.post("/api/providers/test", async (req, res) => {
       sample: text.slice(0, 240),
     });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
 app.post("/api/providers/models", async (req, res) => {
   const spec = req.body?.spec as ProviderSpec | undefined;
-  if (!spec?.baseUrl) return res.status(400).json({ ok: false, error: "missing spec.baseUrl" });
+  if (!spec?.baseUrl)
+    return res.status(400).json({ ok: false, error: "missing spec.baseUrl" });
   try {
-    const r = await fetch(buildUrl(spec, "models"), { headers: buildHeaders(spec) });
+    const r = await fetch(buildUrl(spec, "models"), {
+      headers: buildHeaders(spec),
+    });
     const data = await r.json().catch(() => null);
-    return res.json({ ok: r.ok, status: r.status, models: extractModels(data) });
+    return res.json({
+      ok: r.ok,
+      status: r.status,
+      models: extractModels(data),
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: (err as Error).message });
   }
@@ -115,23 +144,32 @@ function countModels(data: unknown): number {
   return extractModels(data).length;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function extractModels(data: unknown): Array<{ id: string; name?: string }> {
-  if (!data || typeof data !== "object") return [];
+  if (!isRecord(data)) return [];
   // OpenAI-compatible: { data: [{ id }] }
-  const d = data as Record<string, unknown>;
-  if (Array.isArray(d.data)) {
-    return (d.data as Array<Record<string, unknown>>).map((m) => ({
-      id: String(m.id ?? m.name ?? ""),
-      name: typeof m.name === "string" ? m.name : undefined,
-    })).filter((m) => m.id);
+  if (Array.isArray(data.data)) {
+    return data.data
+      .filter(isRecord)
+      .map((m) => ({
+        id: String(m.id ?? m.name ?? ""),
+        name: typeof m.name === "string" ? m.name : undefined,
+      }))
+      .filter((m) => m.id);
   }
   // Anthropic: { data: [{ id, display_name }] } — already covered above
   // Gemini: { models: [{ name }] }
-  if (Array.isArray(d.models)) {
-    return (d.models as Array<Record<string, unknown>>).map((m) => ({
-      id: String(m.name ?? m.id ?? ""),
-      name: typeof m.displayName === "string" ? m.displayName : undefined,
-    })).filter((m) => m.id);
+  if (Array.isArray(data.models)) {
+    return data.models
+      .filter(isRecord)
+      .map((m) => ({
+        id: String(m.name ?? m.id ?? ""),
+        name: typeof m.displayName === "string" ? m.displayName : undefined,
+      }))
+      .filter((m) => m.id);
   }
   return [];
 }
@@ -162,7 +200,10 @@ app.post("/api/chat/stream", async (req, res) => {
   };
 
   const abort = new AbortController();
-  req.on("close", () => abort.abort());
+  let completed = false;
+  res.on("close", () => {
+    if (!completed && !res.writableEnded) abort.abort();
+  });
 
   try {
     const url = buildUrl(body.spec, "chat");
@@ -196,18 +237,31 @@ app.post("/api/chat/stream", async (req, res) => {
         const line = raw.trim();
         if (!line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
-        if (payload === "[DONE]") { send("done", {}); return res.end(); }
+        if (payload === "[DONE]") {
+          completed = true;
+          send("done", {});
+          return res.end();
+        }
         try {
           const parsed = JSON.parse(payload);
           const token = extractToken(parsed, body.spec.shape);
           if (token) send("token", { delta: token });
-        } catch { /* skip non-json keepalive */ }
+        } catch {
+          /* skip non-json keepalive */
+        }
       }
     }
+    completed = true;
     send("done", {});
     res.end();
   } catch (err) {
-    send("error", { message: (err as Error).message });
+    completed = true;
+    if (abort.signal.aborted && (res.destroyed || res.writableEnded)) return;
+    const message =
+      (err as Error).name === "AbortError"
+        ? "Stream cancelado antes da resposta terminar."
+        : (err as Error).message;
+    send("error", { message });
     res.end();
   }
 });
@@ -236,14 +290,20 @@ function buildChatBody(body: ChatRequest): unknown {
 }
 
 function extractToken(parsed: unknown, shape: ProviderShape): string {
-  if (!parsed || typeof parsed !== "object") return "";
-  const p = parsed as Record<string, any>;
+  if (!isRecord(parsed)) return "";
   if (shape === "anthropic") {
-    if (p.type === "content_block_delta" && p.delta?.type === "text_delta") return p.delta.text ?? "";
+    const delta = isRecord(parsed.delta) ? parsed.delta : undefined;
+    if (parsed.type === "content_block_delta" && delta?.type === "text_delta")
+      return typeof delta.text === "string" ? delta.text : "";
     return "";
   }
   // OpenAI-compatible chunk
-  return p.choices?.[0]?.delta?.content ?? p.choices?.[0]?.text ?? "";
+  const firstChoice = Array.isArray(parsed.choices)
+    ? parsed.choices.find(isRecord)
+    : undefined;
+  const delta = isRecord(firstChoice?.delta) ? firstChoice.delta : undefined;
+  if (typeof delta?.content === "string") return delta.content;
+  return typeof firstChoice?.text === "string" ? firstChoice.text : "";
 }
 
 /* ---------------------------------------------- /api/runtimes/langgraph ---*/
@@ -251,16 +311,16 @@ function extractToken(parsed: unknown, shape: ProviderShape): string {
 interface GraphNodeSpec {
   id: string;
   type: "llm" | "tool" | "router" | "human" | "transform";
-  prompt?: string;             // for llm nodes
-  toolCode?: string;           // for tool nodes — JS source returning string|object
-  routerKey?: string;          // for router nodes — state field whose value picks next edge
-  transformCode?: string;      // for transform nodes — JS that modifies state
+  prompt?: string; // for llm nodes
+  toolCode?: string; // for tool nodes — JS source returning string|object
+  routerKey?: string; // for router nodes — state field whose value picks next edge
+  transformCode?: string; // for transform nodes — JS that modifies state
 }
 
 interface GraphEdgeSpec {
   from: string;
   to: string;
-  condition?: string;          // optional router branch label
+  condition?: string; // optional router branch label
 }
 
 interface RunGraphRequest {
@@ -291,23 +351,52 @@ app.post("/api/runtimes/langgraph/run", async (req, res) => {
     // Build a dynamic graph. State is a free-form record so user-defined transforms
     // can stash arbitrary keys.
     const StateSchema = Annotation.Root({
-      input:  Annotation<Record<string, unknown>>({ reducer: (_a, b) => b ?? {}, default: () => ({}) }),
-      output: Annotation<Record<string, unknown>>({ reducer: (a, b) => ({ ...a, ...b }), default: () => ({}) }),
-      log:    Annotation<string[]>({ reducer: (a, b) => [...a, ...b], default: () => [] }),
-      branch: Annotation<string | undefined>({ reducer: (_a, b) => b, default: () => undefined }),
+      input: Annotation<Record<string, unknown>>({
+        reducer: (_a, b) => b ?? {},
+        default: () => ({}),
+      }),
+      output: Annotation<Record<string, unknown>>({
+        reducer: (a, b) => ({ ...a, ...b }),
+        default: () => ({}),
+      }),
+      log: Annotation<string[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+      branch: Annotation<string | undefined>({
+        reducer: (_a, b) => b,
+        default: () => undefined,
+      }),
     });
 
     type SState = typeof StateSchema.State;
+    type DynamicGraph = {
+      addNode(
+        id: string,
+        action: (state: SState) => Promise<Partial<SState>>,
+      ): unknown;
+      addEdge(from: string, to: string): unknown;
+      addConditionalEdges(
+        from: string,
+        path: (state: SState) => string,
+        pathMap: Record<string, string>,
+      ): unknown;
+      compile(): { invoke(input: Partial<SState>): Promise<unknown> };
+    };
 
     const graph = new StateGraph(StateSchema);
+    const dynamicGraph = graph as unknown as DynamicGraph;
 
     for (const node of body.nodes) {
-      graph.addNode(node.id as any, async (state: SState): Promise<Partial<SState>> => {
-        send("node:start", { id: node.id, type: node.type });
-        const result = await runNode(node, state, body, send);
-        send("node:end", { id: node.id, output: result });
-        return result;
-      });
+      dynamicGraph.addNode(
+        node.id,
+        async (state: SState): Promise<Partial<SState>> => {
+          send("node:start", { id: node.id, type: node.type });
+          const result = await runNode(node, state, body, send);
+          send("node:end", { id: node.id, output: result });
+          return result;
+        },
+      );
     }
 
     // edges
@@ -317,7 +406,7 @@ app.post("/api/runtimes/langgraph/run", async (req, res) => {
       grouped.get(e.from)!.push(e);
     }
 
-    graph.addEdge(START, body.entry as any);
+    dynamicGraph.addEdge(String(START), body.entry);
 
     for (const [from, edges] of grouped) {
       const fromNode = body.nodes.find((n) => n.id === from);
@@ -325,24 +414,36 @@ app.post("/api/runtimes/langgraph/run", async (req, res) => {
       if (isRouter) {
         const mapping: Record<string, string> = {};
         for (const e of edges) mapping[e.condition ?? "default"] = e.to;
-        graph.addConditionalEdges(from as any, (state: SState) => {
-          const branch = state.branch ?? "default";
-          return mapping[branch] ?? mapping["default"] ?? body.exits[0] ?? END;
-        }, mapping as any);
+        dynamicGraph.addConditionalEdges(
+          from,
+          (state: SState) => {
+            const branch = state.branch ?? "default";
+            return (
+              mapping[branch] ??
+              mapping["default"] ??
+              body.exits[0] ??
+              String(END)
+            );
+          },
+          mapping,
+        );
       } else {
         for (const e of edges) {
-          graph.addEdge(from as any, e.to as any);
+          dynamicGraph.addEdge(from, e.to);
         }
       }
     }
-    for (const exit of body.exits) graph.addEdge(exit as any, END);
+    for (const exit of body.exits) dynamicGraph.addEdge(exit, String(END));
 
-    const compiled = graph.compile();
+    const compiled = dynamicGraph.compile();
     const finalState = await compiled.invoke({ input: body.input });
     send("final", finalState);
     res.end();
   } catch (err) {
-    send("error", { message: (err as Error).message, stack: (err as Error).stack });
+    send("error", {
+      message: (err as Error).message,
+      stack: (err as Error).stack,
+    });
     res.end();
   }
 });
@@ -351,29 +452,42 @@ async function runNode(
   node: GraphNodeSpec,
   state: { input: Record<string, unknown>; output: Record<string, unknown> },
   ctx: RunGraphRequest,
-  send: (event: string, data: unknown) => void
-): Promise<{ output?: Record<string, unknown>; log?: string[]; branch?: string }> {
+  send: (event: string, data: unknown) => void,
+): Promise<{
+  output?: Record<string, unknown>;
+  log?: string[];
+  branch?: string;
+}> {
   switch (node.type) {
     case "llm": {
       if (!ctx.llmSpec || !ctx.llmModel) {
         return { log: [`[${node.id}] no llm configured — skipping`] };
       }
-      const userMsg = interpolate(node.prompt ?? "", { ...state.input, ...state.output });
+      const userMsg = interpolate(node.prompt ?? "", {
+        ...state.input,
+        ...state.output,
+      });
       const resp = await fetch(buildUrl(ctx.llmSpec, "chat"), {
         method: "POST",
         headers: buildHeaders(ctx.llmSpec),
-        body: JSON.stringify(buildChatBody({
-          spec: ctx.llmSpec,
-          model: ctx.llmModel,
-          messages: [{ role: "user", content: userMsg }],
-        } as ChatRequest)),
+        body: JSON.stringify(
+          buildChatBody({
+            spec: ctx.llmSpec,
+            model: ctx.llmModel,
+            messages: [{ role: "user", content: userMsg }],
+          } as ChatRequest),
+        ),
       });
       if (!resp.ok) {
         const err = await resp.text();
-        return { log: [`[${node.id}] llm error ${resp.status}: ${err.slice(0, 200)}`] };
+        return {
+          log: [`[${node.id}] llm error ${resp.status}: ${err.slice(0, 200)}`],
+        };
       }
       // collapse stream into a single string for this node
-      const text = await collectStream(resp, ctx.llmSpec.shape, (delta) => send("token", { node: node.id, delta }));
+      const text = await collectStream(resp, ctx.llmSpec.shape, (delta) =>
+        send("token", { node: node.id, delta }),
+      );
       return { output: { [node.id]: text }, log: [`[${node.id}] llm ok`] };
     }
     case "transform":
@@ -390,7 +504,9 @@ async function runNode(
     }
     case "router": {
       const key = node.routerKey ?? "branch";
-      const branch = String((state.output as any)?.[key] ?? (state.input as any)?.[key] ?? "default");
+      const branch = String(
+        state.output[key] ?? state.input[key] ?? "default",
+      );
       return { branch, log: [`[${node.id}] route -> ${branch}`] };
     }
     case "human": {
@@ -403,7 +519,12 @@ async function runNode(
 
 function interpolate(tpl: string, vars: Record<string, unknown>): string {
   return tpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k: string) => {
-    const v = k.split(".").reduce<any>((acc, part) => (acc == null ? acc : acc[part]), vars);
+    const v = k
+      .split(".")
+      .reduce<unknown>(
+        (acc, part) => (isRecord(acc) ? acc[part] : undefined),
+        vars,
+      );
     return v == null ? "" : String(v);
   });
 }
@@ -411,7 +532,7 @@ function interpolate(tpl: string, vars: Record<string, unknown>): string {
 async function collectStream(
   resp: Response,
   shape: ProviderShape,
-  onToken: (t: string) => void
+  onToken: (t: string) => void,
 ): Promise<string> {
   if (!resp.body) return "";
   const reader = resp.body.getReader();
@@ -432,8 +553,13 @@ async function collectStream(
       try {
         const parsed = JSON.parse(payload);
         const token = extractToken(parsed, shape);
-        if (token) { acc += token; onToken(token); }
-      } catch { /* skip */ }
+        if (token) {
+          acc += token;
+          onToken(token);
+        }
+      } catch {
+        /* skip */
+      }
     }
   }
   return acc;
@@ -442,20 +568,34 @@ async function collectStream(
 /* ---------------------------------------------- /api/tools/run -----------*/
 
 interface ToolRunRequest {
-  kind: "http" | "json" | "websearch" | "calculator" | "fs" | "shell" | "custom";
+  kind:
+    | "http"
+    | "json"
+    | "websearch"
+    | "calculator"
+    | "fs"
+    | "shell"
+    | "custom";
   args: Record<string, unknown>;
   code?: string;
 }
 
 app.post("/api/tools/run", async (req, res) => {
   const body = req.body as ToolRunRequest | undefined;
-  if (!body?.kind) return res.status(400).json({ ok: false, error: "missing kind" });
+  if (!body?.kind)
+    return res.status(400).json({ ok: false, error: "missing kind" });
   const t0 = Date.now();
   try {
     const result = await runTool(body);
     return res.json({ ok: true, result, latencyMs: Date.now() - t0 });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res
+      .status(500)
+      .json({
+        ok: false,
+        error: (err as Error).message,
+        latencyMs: Date.now() - t0,
+      });
   }
 });
 
@@ -467,15 +607,30 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
       if (!url) throw new Error("missing url");
       const method = String(a.method ?? "GET").toUpperCase();
       let headers: Record<string, string> = {};
-      if (typeof a.headers === "string") { try { headers = JSON.parse(a.headers); } catch { /* ignore */ } }
-      else if (a.headers && typeof a.headers === "object") headers = a.headers as Record<string, string>;
+      if (typeof a.headers === "string") {
+        try {
+          headers = JSON.parse(a.headers);
+        } catch {
+          /* ignore */
+        }
+      } else if (a.headers && typeof a.headers === "object")
+        headers = a.headers as Record<string, string>;
       const init: RequestInit = { method, headers };
-      if (method !== "GET" && method !== "HEAD" && a.body) init.body = String(a.body);
+      if (method !== "GET" && method !== "HEAD" && a.body)
+        init.body = String(a.body);
       const r = await fetch(url, init);
       const text = await r.text();
       let parsed: unknown = text;
-      try { parsed = JSON.parse(text); } catch { /* keep text */ }
-      return { status: r.status, headers: Object.fromEntries(r.headers), body: parsed };
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        /* keep text */
+      }
+      return {
+        status: r.status,
+        headers: Object.fromEntries(r.headers),
+        body: parsed,
+      };
     }
     case "json": {
       const input = a.input;
@@ -485,22 +640,30 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
     }
     case "calculator": {
       const expr = String(a.expression ?? "");
-      if (!/^[\d\s+\-*/().,%^eE]+$/.test(expr)) throw new Error("only arithmetic allowed");
+      if (!/^[\d\s+\-*/().,%^eE]+$/.test(expr))
+        throw new Error("only arithmetic allowed");
       return new Function(`return (${expr});`)();
     }
     case "websearch": {
       const q = String(a.query ?? "");
       if (!q) throw new Error("missing query");
-      const r = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
-        headers: { "user-agent": "Mozilla/5.0 PerfectAgent" },
-      });
+      const r = await fetch(
+        `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
+        {
+          headers: { "user-agent": "Mozilla/5.0 PerfectAgent" },
+        },
+      );
       const html = await r.text();
-      const results: Array<{ title: string; url: string; snippet: string }> = [];
-      const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+      const results: Array<{ title: string; url: string; snippet: string }> =
+        [];
+      const re =
+        /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(html)) && results.length < 8) {
         results.push({
-          url: m[1].replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "").replace(/&.*$/, ""),
+          url: m[1]
+            .replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "")
+            .replace(/&.*$/, ""),
           title: stripTags(m[2]),
           snippet: stripTags(m[3]),
         });
@@ -533,7 +696,14 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
 }
 
 function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
 }
 
 /* ---------------------------------------------- /api/integrations/test ---*/
@@ -549,16 +719,32 @@ app.post("/api/integrations/test", async (req, res) => {
     }
     const r = await fetch(url, init);
     const text = await r.text();
-    return res.json({ ok: r.ok, status: r.status, latencyMs: Date.now() - t0, sample: text.slice(0, 500) });
+    return res.json({
+      ok: r.ok,
+      status: r.status,
+      latencyMs: Date.now() - t0,
+      sample: text.slice(0, 500),
+    });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
 /* ---------------------------------------------- /api/mcp/* --------------*/
 
-async function mcpRpc(url: string, apiKey: string | undefined, method: string, params?: unknown): Promise<unknown> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+async function mcpRpc(
+  url: string,
+  apiKey: string | undefined,
+  method: string,
+  params?: unknown,
+): Promise<unknown> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
   if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
   const r = await fetch(url, {
     method: "POST",
@@ -566,10 +752,24 @@ async function mcpRpc(url: string, apiKey: string | undefined, method: string, p
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   });
   const text = await r.text();
-  let json: any;
-  try { json = JSON.parse(text); } catch { throw new Error(`mcp non-json: ${text.slice(0, 200)}`); }
-  if (json.error) throw new Error(`mcp ${method} error: ${json.error.message ?? JSON.stringify(json.error)}`);
-  return json.result;
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`mcp non-json: ${text.slice(0, 200)}`);
+  }
+  const payload = isRecord(json) ? json : {};
+  if (payload.error) {
+    const error = isRecord(payload.error) ? payload.error : {};
+    throw new Error(
+      `mcp ${method} error: ${
+        typeof error.message === "string"
+          ? error.message
+          : JSON.stringify(payload.error)
+      }`,
+    );
+  }
+  return payload.result;
 }
 
 app.post("/api/mcp/list", async (req, res) => {
@@ -578,22 +778,49 @@ app.post("/api/mcp/list", async (req, res) => {
   const t0 = Date.now();
   try {
     const result = await mcpRpc(url, apiKey, "tools/list");
-    const tools = ((result as any)?.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+    const resultRecord = isRecord(result) ? result : {};
+    const tools = (Array.isArray(resultRecord.tools) ? resultRecord.tools : [])
+      .filter(isRecord)
+      .map((tool) => ({
+        name: String(tool.name ?? ""),
+        description:
+          typeof tool.description === "string" ? tool.description : undefined,
+        inputSchema: isRecord(tool.inputSchema)
+          ? tool.inputSchema
+          : undefined,
+      }))
+      .filter((tool) => tool.name) as Array<{
+      name: string;
+      description?: string;
+      inputSchema?: Record<string, unknown>;
+    }>;
     return res.json({ ok: true, tools, latencyMs: Date.now() - t0 });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
 app.post("/api/mcp/call", async (req, res) => {
   const { url, apiKey, name, arguments: args } = req.body ?? {};
-  if (!url || !name) return res.status(400).json({ ok: false, error: "missing url or name" });
+  if (!url || !name)
+    return res.status(400).json({ ok: false, error: "missing url or name" });
   const t0 = Date.now();
   try {
-    const result = await mcpRpc(url, apiKey, "tools/call", { name, arguments: args ?? {} });
+    const result = await mcpRpc(url, apiKey, "tools/call", {
+      name,
+      arguments: args ?? {},
+    });
     return res.json({ ok: true, result, latencyMs: Date.now() - t0 });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
@@ -609,9 +836,18 @@ app.post("/api/runtimes/test", async (req, res) => {
     const r = await fetch(url, { method: "GET", headers });
     const latencyMs = Date.now() - t0;
     const text = await r.text();
-    return res.json({ ok: r.ok, status: r.status, latencyMs, sample: text.slice(0, 200) });
+    return res.json({
+      ok: r.ok,
+      status: r.status,
+      latencyMs,
+      sample: text.slice(0, 200),
+    });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
@@ -628,14 +864,27 @@ app.post("/api/runtimes/proxy", async (req, res) => {
     });
     const text = await r.text();
     let body: unknown = undefined;
-    try { body = JSON.parse(text); } catch { /* not json */ }
-    return res.json({ ok: r.ok, status: r.status, latencyMs: Date.now() - t0, text, body });
+    try {
+      body = JSON.parse(text);
+    } catch {
+      /* not json */
+    }
+    return res.json({
+      ok: r.ok,
+      status: r.status,
+      latencyMs: Date.now() - t0,
+      text,
+      body,
+    });
   } catch (err) {
-    return res.json({ ok: false, error: (err as Error).message, latencyMs: Date.now() - t0 });
+    return res.json({
+      ok: false,
+      error: (err as Error).message,
+      latencyMs: Date.now() - t0,
+    });
   }
 });
 
 app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`[perfectagent] api ready on http://127.0.0.1:${PORT}`);
+  process.stdout.write(`[perfectagent] api ready on http://127.0.0.1:${PORT}\n`);
 });

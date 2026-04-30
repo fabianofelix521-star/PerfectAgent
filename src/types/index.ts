@@ -6,7 +6,12 @@
  * stores and pickers (`baseUrl`, `enabled`, `providerId`, `defaultModelId`).
  */
 
-export type ProviderShape = "openai" | "anthropic" | "gemini" | "ollama" | "custom";
+export type ProviderShape =
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "ollama"
+  | "custom";
 export type AuthMode = "bearer" | "header" | "query" | "none";
 
 export interface ProviderSpec {
@@ -28,12 +33,18 @@ export interface ProviderConfig {
   enabled: boolean;
   supportsModelsFetch?: boolean;
   supportsVision?: boolean;
-  presetId: string;                // canonical preset id
+  presetId: string; // canonical preset id
   spec: ProviderSpec;
   defaultModel?: string;
   fetchedModels?: Array<{ id: string; name?: string }>;
   configured: boolean;
-  lastTest?: { ok: boolean; status?: number; latencyMs?: number; error?: string; at: number };
+  lastTest?: {
+    ok: boolean;
+    status?: number;
+    latencyMs?: number;
+    error?: string;
+    at: number;
+  };
 }
 
 export interface ModelConfig {
@@ -56,15 +67,26 @@ export interface ProviderPreset {
   envVar?: string;
   presetModels?: string[];
   notes?: string;
+  pathOverrides?: { chat?: string; models?: string };
   /** fields the user must fill in besides the API key */
-  extraFields?: Array<{ key: string; label: string; type?: "text" | "password"; placeholder?: string }>;
+  extraFields?: Array<{
+    key: string;
+    label: string;
+    type?: "text" | "password";
+    placeholder?: string;
+  }>;
 }
 
 export interface ChatMessageV2 {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  attachments?: Array<{ name: string; size: number; type: string; dataUrl?: string }>;
+  attachments?: Array<{
+    name: string;
+    size: number;
+    type: string;
+    dataUrl?: string;
+  }>;
   createdAt: number;
   providerId?: string;
   modelId?: string;
@@ -103,7 +125,13 @@ export interface RuntimeCapabilities {
 export interface RuntimeConfig {
   id: string;
   name: string;
-  type: "langgraph" | "crewai" | "autogen" | "llamaindex" | "webcontainer" | "custom";
+  type:
+    | "langgraph"
+    | "crewai"
+    | "autogen"
+    | "llamaindex"
+    | "webcontainer"
+    | "custom";
   endpoint?: string;
   apiKey?: string;
   status: "connected" | "disconnected" | "untested";
@@ -112,17 +140,28 @@ export interface RuntimeConfig {
 }
 
 export type RuntimeKind =
-  | "langgraph-dag"   // legacy: in-app LangGraph DAG (uses /api/runtimes/langgraph/run)
-  | "langgraph"       // remote LangGraph endpoint
+  | "langgraph-dag" // legacy: in-app LangGraph DAG (uses /api/runtimes/langgraph/run)
+  | "langgraph" // remote LangGraph endpoint
   | "crewai"
   | "autogen"
   | "llamaindex"
   | "webcontainer"
   | "omega-cognition" // OmegaCognitionEngine — 8-layer cognitive runtime overlay
-  | "custom"          // generic HTTP webhook
-  | "generic";        // pure LLM fallback (no runtime endpoint)
+  | "morpheus-pantheon" // Morpheus auctioneer + 12-agent Pantheon (router enrichment)
+  | "stigmergy-nexus" // Vectorial State Space with reactive triggers
+  | "ephemeral-genesis" // Just-in-time micro-agent compilation
+  | "supreme-coordinator" // Hierarchical swarm: Strategic Layer + 15 Domain Supervisors + Infra
+  | "custom" // generic HTTP webhook
+  | "generic"; // pure LLM fallback (no runtime endpoint)
 
-export type RuntimeStatus = "ready" | "running" | "paused" | "error" | "untested" | "connected" | "disconnected";
+export type RuntimeStatus =
+  | "ready"
+  | "running"
+  | "paused"
+  | "error"
+  | "untested"
+  | "connected"
+  | "disconnected";
 
 export interface AgentRuntime {
   id: string;
@@ -146,12 +185,17 @@ export interface AgentRuntime {
   memory: boolean;
   isDefault?: boolean;
   status: RuntimeStatus;
-  lastRun?: { at: number; durationMs: number; ok: boolean; finalOutput?: unknown };
+  lastRun?: {
+    at: number;
+    durationMs: number;
+    ok: boolean;
+    finalOutput?: unknown;
+  };
   lastTest?: { ok: boolean; latencyMs?: number; error?: string; at: number };
 }
 
 export interface ProjectFile {
-  path: string;        // e.g. "src/App.tsx"
+  path: string; // e.g. "src/App.tsx"
   content: string;
   language?: string;
 }
@@ -211,13 +255,13 @@ export interface ToolParam {
 }
 
 export type ToolKind =
-  | "http"          // generic HTTP request
-  | "json"          // parse / transform JSON via JS
-  | "websearch"     // duckduckgo HTML scrape
-  | "calculator"    // math.js eval
-  | "fs"            // read project files
-  | "shell"         // run a whitelisted shell command (disabled by default)
-  | "custom";       // user JS code
+  | "http" // generic HTTP request
+  | "json" // parse / transform JSON via JS
+  | "websearch" // duckduckgo HTML scrape
+  | "calculator" // math.js eval
+  | "fs" // read project files
+  | "shell" // run a whitelisted shell command (disabled by default)
+  | "custom"; // user JS code
 
 export interface Tool {
   id: string;
@@ -235,7 +279,15 @@ export interface Tool {
 export interface Integration {
   id: string;
   name: string;
-  kind: "webhook" | "slack" | "github" | "stripe" | "supabase" | "notion" | "google" | "custom";
+  kind:
+    | "webhook"
+    | "slack"
+    | "github"
+    | "stripe"
+    | "supabase"
+    | "notion"
+    | "google"
+    | "custom";
   url?: string;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
@@ -243,7 +295,13 @@ export interface Integration {
   /** Tokens / credentials, obfuscated like provider keys. */
   secrets?: Record<string, string>;
   connected: boolean;
-  lastTest?: { ok: boolean; status?: number; latencyMs?: number; error?: string; at: number };
+  lastTest?: {
+    ok: boolean;
+    status?: number;
+    latencyMs?: number;
+    error?: string;
+    at: number;
+  };
 }
 
 export interface McpServer {
@@ -255,6 +313,10 @@ export interface McpServer {
   command?: string;
   apiKey?: string;
   enabled: boolean;
-  tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+  tools?: Array<{
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+  }>;
   lastTest?: { ok: boolean; latencyMs?: number; error?: string; at: number };
 }

@@ -135,14 +135,21 @@ export const api = {
           for (const block of blocks) {
             const ev = parseSseBlock(block);
             if (!ev) continue;
-            if (ev.event === "token" && ev.data?.delta) params.onToken(ev.data.delta);
-            else if (ev.event === "error") { params.onError(ev.data?.message ?? "stream error"); return; }
+            const delta = readSseStringField(ev.data, "delta");
+            if (ev.event === "token" && delta) params.onToken(delta);
+            else if (ev.event === "error") {
+              params.onError(readSseMessage(ev.data) ?? "stream error");
+              return;
+            }
             else if (ev.event === "done") { params.onDone(); return; }
           }
         }
         params.onDone();
       } catch (err) {
-        if ((err as Error).name === "AbortError") return;
+        if ((err as Error).name === "AbortError") {
+          params.onDone();
+          return;
+        }
         const msg = (err as Error).message;
         const friendly = /Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg)
           ? `Backend offline em ${API_BASE}. Rode \`npm run server\` em outro terminal.`
@@ -156,7 +163,7 @@ export const api = {
   /** Stream LangGraph runtime execution events. */
   streamGraph(params: {
     body: unknown;
-    onEvent: (name: string, data: any) => void;
+    onEvent: (name: string, data: unknown) => void;
     onDone: () => void;
     onError: (err: string) => void;
   }): () => void {
@@ -182,14 +189,20 @@ export const api = {
           for (const block of blocks) {
             const ev = parseSseBlock(block);
             if (!ev) continue;
-            if (ev.event === "error") { params.onError(ev.data?.message ?? "graph error"); return; }
+            if (ev.event === "error") {
+              params.onError(readSseMessage(ev.data) ?? "graph error");
+              return;
+            }
             params.onEvent(ev.event, ev.data);
             if (ev.event === "final") { params.onDone(); return; }
           }
         }
         params.onDone();
       } catch (err) {
-        if ((err as Error).name === "AbortError") return;
+        if ((err as Error).name === "AbortError") {
+          params.onDone();
+          return;
+        }
         const msg = (err as Error).message;
         const friendly = /Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg)
           ? `Backend offline em ${API_BASE}. Rode \`npm run server\` em outro terminal.`
@@ -201,7 +214,7 @@ export const api = {
   },
 };
 
-function parseSseBlock(block: string): { event: string; data: any } | null {
+function parseSseBlock(block: string): { event: string; data: unknown } | null {
   const lines = block.split("\n");
   let event = "message";
   let data = "";
@@ -211,4 +224,15 @@ function parseSseBlock(block: string): { event: string; data: any } | null {
   }
   if (!data) return null;
   try { return { event, data: JSON.parse(data) }; } catch { return { event, data }; }
+}
+
+function readSseMessage(data: unknown): string | undefined {
+  return readSseStringField(data, "message") ?? (typeof data === "string" ? data : undefined);
+}
+
+function readSseStringField(data: unknown, field: string): string | undefined {
+  if (typeof data === "string") return data;
+  if (!data || typeof data !== "object") return undefined;
+  const value = (data as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : undefined;
 }

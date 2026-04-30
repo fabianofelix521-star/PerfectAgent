@@ -44,6 +44,8 @@ import type {
   RuntimeCapabilities,
 } from "@/types";
 import { cn } from "@/utils/cn";
+import { MorpheusPanel } from "@/components/MorpheusPanel";
+import { SupremeCoordinatorPanel } from "@/components/SupremeCoordinatorPanel";
 
 const NODE_TYPE_OPTIONS = [
   { value: "llm", label: "LLM call" },
@@ -60,6 +62,17 @@ const NODE_TYPE_ICON: Record<RuntimeNode["type"], typeof Brain> = {
   router: GitBranch,
   human: Users,
 };
+
+const LOCAL_ADAPTER_KINDS = new Set<RuntimeKind>([
+  "langgraph-dag",
+  "generic",
+  "webcontainer",
+  "omega-cognition",
+  "morpheus-pantheon",
+  "stigmergy-nexus",
+  "ephemeral-genesis",
+  "supreme-coordinator",
+]);
 
 export function AgentsPage() {
   const runtimes = useConfig((s) => s.runtimes);
@@ -164,6 +177,12 @@ export function AgentsPage() {
     const llmSpec = active.llmProviderId
       ? getRuntimeProviderSpec(active.llmProviderId)
       : undefined;
+
+    if ((active.kind ?? "langgraph-dag") !== "langgraph-dag") {
+      void runAdapterRuntime(active, input);
+      return;
+    }
+
     if (
       active.nodes.some((n) => n.type === "llm") &&
       (!llmSpec || !active.llmModel)
@@ -191,15 +210,16 @@ export function AgentsPage() {
         llmModel: active.llmModel,
       },
       onEvent: (name, data) => {
-        if (name === "node:start") pushLog(`▶ ${data.id} (${data.type})`);
-        else if (name === "node:end") pushLog(`✔ ${data.id} done`);
+        const event = asEventRecord(data);
+        if (name === "node:start") pushLog(`▶ ${event.id} (${event.type})`);
+        else if (name === "node:end") pushLog(`✔ ${event.id} done`);
         else if (name === "token")
-          pushLog(`  …${(data.delta as string).replace(/\n/g, "↵")}`);
+          pushLog(`  …${event.delta.replace(/\n/g, "↵")}`);
         else if (name === "human:checkpoint")
-          pushLog(`⏸ human checkpoint: ${data.id}`);
+          pushLog(`⏸ human checkpoint: ${event.id}`);
         else if (name === "final")
           pushLog(
-            `◉ final state: ${JSON.stringify(data.output ?? data).slice(0, 400)}`,
+            `◉ final state: ${JSON.stringify(event.output ?? data).slice(0, 400)}`,
           );
       },
       onDone: () => {
@@ -262,12 +282,36 @@ export function AgentsPage() {
   return (
     <WorkspaceShell
       eyebrow="Agentes"
-      title="Runtime real com LangGraph"
-      description="Construa, edite e execute grafos de agentes. Cada nó pode ser LLM, ferramenta, router, transformação ou checkpoint humano."
+      title={
+        active.kind === "supreme-coordinator"
+          ? "Runtime Supreme Coordinator"
+          : "Runtime real com LangGraph"
+      }
+      description={
+        active.kind === "supreme-coordinator"
+          ? "Execute o swarm hierárquico com Strategic Layer, supervisores de domínio e agentes TypeScript registrados."
+          : "Construa, edite e execute grafos de agentes. Cada nó pode ser LLM, ferramenta, router, transformação ou checkpoint humano."
+      }
     >
+      <div className="mb-5 space-y-3">
+        <MorpheusPanel />
+        {active.kind === "supreme-coordinator" ? (
+          <details
+            className="rounded-[24px] border border-white/70 bg-white/35 px-3 py-2"
+            open
+          >
+            <summary className="cursor-pointer select-none text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 hover:text-slate-700">
+              👑 Supreme Coordinator · Swarm (15 supervisores · agentes em TS)
+            </summary>
+            <div className="mt-2 max-h-[58vh] overflow-y-auto pr-1">
+              <SupremeCoordinatorPanel />
+            </div>
+          </details>
+        ) : null}
+      </div>
       <div className="grid gap-5 xl:grid-cols-[0.86fr_1.14fr]">
         {/* Left: list of runtimes */}
-        <Surface className="space-y-4">
+        <Surface className="min-w-0 space-y-4">
           <div className="flex items-center justify-between">
             <SectionTitle
               icon={Workflow}
@@ -315,7 +359,7 @@ export function AgentsPage() {
         </Surface>
 
         {/* Right: editor */}
-        <Surface className="space-y-5">
+        <Surface className="min-w-0 space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex-1">
               <input
@@ -636,6 +680,114 @@ export function AgentsPage() {
       />
     </WorkspaceShell>
   );
+
+  async function runAdapterRuntime(
+    runtime: AgentRuntime,
+    input: Record<string, unknown>,
+  ) {
+    const providerId = runtime.llmProviderId ?? configuredProviders[0]?.id;
+    const provider = providerId ? providers[providerId] : undefined;
+    const spec = providerId ? getRuntimeProviderSpec(providerId) : undefined;
+    const model =
+      runtime.llmModel ??
+      provider?.defaultModel ??
+      provider?.fetchedModels?.[0]?.id;
+
+    if (!spec || !model) {
+      toast.error("Configure um provedor e modelo para executar este runtime.");
+      return;
+    }
+
+    const prompt = stringifyRuntimeInput(input);
+    setRunning(true);
+    setLogs([]);
+    patchActive({ status: "running" });
+    pushLog(`${runtime.name} started`);
+
+    const start = Date.now();
+    try {
+      const adapter = createAdapter(runtime);
+      await adapter.chat(
+        [
+          {
+            id: `agent-run-${Date.now().toString(36)}`,
+            role: "user",
+            content: prompt,
+            createdAt: Date.now(),
+            providerId,
+            modelId: model,
+            runtimeId: runtime.id,
+          },
+        ],
+        { spec, model },
+        (chunk) => {
+          if (chunk.event === "token") {
+            const delta = readChunkString(chunk.data, "delta");
+            if (delta) pushLog(delta.replace(/\n/g, "↵"));
+          } else if (chunk.event === "error") {
+            pushLog(
+              `✖ error: ${
+                readChunkString(chunk.data, "message") ?? "runtime error"
+              }`,
+            );
+          } else if (chunk.event !== "done") {
+            pushLog(
+              `${chunk.event}: ${JSON.stringify(chunk.data).slice(0, 240)}`,
+            );
+          }
+        },
+      );
+      const dur = Date.now() - start;
+      upsertRuntime({
+        ...runtime,
+        status: "ready",
+        lastRun: { at: Date.now(), durationMs: dur, ok: true },
+      });
+      toast.success(`${runtime.name} completou em ${dur}ms`);
+    } catch (err) {
+      const dur = Date.now() - start;
+      pushLog(`✖ error: ${(err as Error).message}`);
+      upsertRuntime({
+        ...runtime,
+        status: "error",
+        lastRun: { at: Date.now(), durationMs: dur, ok: false },
+      });
+      toast.error(`Runtime error: ${(err as Error).message}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+}
+
+function asEventRecord(data: unknown): {
+  id: string;
+  type: string;
+  delta: string;
+  output?: unknown;
+} {
+  if (!data || typeof data !== "object") {
+    return { id: "", type: "", delta: typeof data === "string" ? data : "" };
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    id: typeof record.id === "string" ? record.id : "",
+    type: typeof record.type === "string" ? record.type : "",
+    delta: typeof record.delta === "string" ? record.delta : "",
+    output: record.output,
+  };
+}
+
+function stringifyRuntimeInput(input: Record<string, unknown>): string {
+  const question = input.question ?? input.prompt ?? input.message ?? input.task;
+  if (typeof question === "string" && question.trim()) return question.trim();
+  return JSON.stringify(input, null, 2);
+}
+
+function readChunkString(data: unknown, field: string): string | undefined {
+  if (typeof data === "string") return data;
+  if (!data || typeof data !== "object") return undefined;
+  const value = (data as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : undefined;
 }
 
 function CreateRuntimeModal({
@@ -762,6 +914,26 @@ const RUNTIME_KIND_OPTIONS: Array<{
     desc: "Overlay cognitivo de 8 camadas (Global Workspace + Active Inference + Metacognitive Monitor) sobre qualquer LLM configurado.",
   },
   {
+    value: "morpheus-pantheon",
+    label: "Morpheus Runtime · Pantheon",
+    desc: "Leiloeiro local com 12 agentes especialistas que enriquecem o contexto do LLM.",
+  },
+  {
+    value: "stigmergy-nexus",
+    label: "Stigmergy Vectorial Nexus",
+    desc: "Runtime reativo baseado em estado compartilhado vetorial e cascata Processor → Reviewer.",
+  },
+  {
+    value: "ephemeral-genesis",
+    label: "Ephemeral Genesis Engine",
+    desc: "Compila micro-agentes sob demanda para a tarefa dominante e descarta após a execução.",
+  },
+  {
+    value: "supreme-coordinator",
+    label: "Supreme Coordinator · Swarm",
+    desc: "Swarm hierárquico com Strategic Layer, 15 supervisores de domínio e agentes TypeScript registráveis.",
+  },
+  {
     value: "custom",
     label: "HTTP Custom",
     desc: "Qualquer endpoint que aceite POST {messages, model, system}.",
@@ -808,10 +980,7 @@ function RuntimeKindBlock({
   async function testConnection() {
     if (
       !active.endpoint &&
-      kind !== "langgraph-dag" &&
-      kind !== "generic" &&
-      kind !== "webcontainer" &&
-      kind !== "omega-cognition"
+      !LOCAL_ADAPTER_KINDS.has(kind)
     ) {
       toast.error("Defina o endpoint primeiro.");
       return;
@@ -819,10 +988,7 @@ function RuntimeKindBlock({
     setTesting(true);
     try {
       if (
-        kind === "langgraph-dag" ||
-        kind === "generic" ||
-        kind === "webcontainer" ||
-        kind === "omega-cognition"
+        LOCAL_ADAPTER_KINDS.has(kind)
       ) {
         const r = await api.health();
         const result = {
@@ -864,10 +1030,30 @@ function RuntimeKindBlock({
       const adapter = createAdapter(active);
       const cfg = useConfig.getState();
       const provId =
-        cfg.studioSelection.providerId ?? Object.keys(cfg.providers)[0];
+        active.llmProviderId ??
+        cfg.settings.defaultProviderId ??
+        cfg.studioSelection.providerId ??
+        Object.values(cfg.providers).find((provider) => provider.configured)?.id;
+      const provider = provId ? cfg.providers[provId] : undefined;
       const spec = provId ? getRuntimeProviderSpec(provId) : undefined;
+      const settingsModel =
+        provId && cfg.settings.defaultProviderId === provId
+          ? cfg.settings.defaultModelId
+          : undefined;
+      const studioModel =
+        provId && cfg.studioSelection.providerId === provId
+          ? cfg.studioSelection.model
+          : undefined;
       const model =
-        cfg.studioSelection.model ?? cfg.providers[provId ?? ""]?.defaultModel;
+        active.llmModel ??
+        settingsModel ??
+        studioModel ??
+        provider?.defaultModel ??
+        provider?.fetchedModels?.[0]?.id;
+      if (!spec || !model) {
+        toast.error("Configure o provedor e modelo deste runtime primeiro.");
+        return;
+      }
       const r = await adapter.testCodeGeneration({ spec, model });
       if (r.ok)
         toast.success(
@@ -882,12 +1068,7 @@ function RuntimeKindBlock({
     }
   }
 
-  const needsEndpoint = ![
-    "langgraph-dag",
-    "generic",
-    "webcontainer",
-    "omega-cognition",
-  ].includes(kind);
+  const needsEndpoint = !LOCAL_ADAPTER_KINDS.has(kind);
   const lastTest = active.lastTest;
   const decodedActive = getRuntimeDecoded(active.id);
 
