@@ -1,0 +1,526 @@
+/**
+ * CodeStudioPage — AI-powered code generation workspace.
+ *
+ * Layout (SplitPane):
+ *   Left  — chat thread + request input + pipeline logs
+ *   Right — tabs: [Editor | Preview]
+ *             Editor: file tree sidebar + Monaco editor
+ *             Preview: WebContainer iframe
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Code2,
+  Eye,
+  FileCode2,
+  FolderOpen,
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
+  Send,
+  Square,
+  Trash2,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import Editor from "@monaco-editor/react";
+import { SplitPane } from "@/components/SplitPane";
+import { ChatBubble } from "@/components/ChatBubble";
+import { toast } from "@/components/Toast";
+import {
+  ensurePresetsRegistered,
+  getRuntimeProviderSpec,
+  useConfig,
+} from "@/stores/config";
+import {
+  getModelOptions,
+  getProviderOptions,
+  resolveModelId,
+  resolveProviderId,
+  resolveRuntimeId,
+} from "@/services/configSelectors";
+import { createAdapter } from "@/services/adapters";
+import type { PipelineEvent } from "@/services/agentPipeline";
+import { cn } from "@/utils/cn";
+import type { ChatMessageV2, ProjectFile } from "@/types";
+
+/* ---------------------------------------------------------------- types */
+
+type RightTab = "editor" | "preview";
+
+/* --------------------------------------------------------------- helpers */
+
+function msgId() {
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function threadId() {
+  return `st-${Date.now().toString(36)}`;
+}
+
+function newThread() {
+  return {
+    id: threadId(),
+    title: "Code Studio",
+    skillIds: [],
+    messages: [] as ChatMessageV2[],
+    createdAt: Date.now(),
+  };
+}
+
+function guessLanguage(path: string): string {
+  if (path.endsWith(".tsx") || path.endsWith(".ts")) return "typescript";
+  if (path.endsWith(".jsx") || path.endsWith(".js")) return "javascript";
+  if (path.endsWith(".css")) return "css";
+  if (path.endsWith(".html")) return "html";
+  if (path.endsWith(".json")) return "json";
+  if (path.endsWith(".md")) return "markdown";
+  return "plaintext";
+}
+
+/* ================================================================ component */
+
+export function CodeStudioPage() {
+  /* ---------- store ---------- */
+  const providers = useConfig((s) => s.providers);
+  const models = useConfig((s) => s.models);
+  const runtimes = useConfig((s) => s.runtimes);
+  const settings = useConfig((s) => s.settings);
+  const studioThreads = useConfig((s) => s.studioThreads);
+  const activeStudioThreadId = useConfig((s) => s.activeStudioThreadId);
+  const studioSelection = useConfig((s) => s.studioSelection);
+  const addStudioThread = useConfig((s) => s.addStudioThread);
+  const setActiveStudioThread = useConfig((s) => s.setActiveStudioThread);
+  const appendStudioMessage = useConfig((s) => s.appendStudioMessage);
+  const patchStudioMessage = useConfig((s) => s.patchStudioMessage);
+  const setStudioSelection = useConfig((s) => s.setStudioSelection);
+
+  /* ---------- derived ---------- */
+  const providerOptions = useMemo(() => getProviderOptions(providers), [providers]);
+
+  const resolvedProviderId = useMemo(
+    () => resolveProviderId(studioSelection.providerId, settings.defaultProviderId, providers),
+    [studioSelection.providerId, settings.defaultProviderId, providers],
+  );
+
+  const modelOptions = useMemo(
+    () => getModelOptions(resolvedProviderId, providers, models),
+    [resolvedProviderId, providers, models],
+  );
+
+  const resolvedModelId = useMemo(
+    () => resolveModelId(studioSelection.model, settings.defaultModelId, resolvedProviderId, providers, models),
+    [studioSelection.model, settings.defaultModelId, resolvedProviderId, providers, models],
+  );
+
+  const resolvedRuntimeId = useMemo(
+    () => resolveRuntimeId(studioSelection.runtimeId, settings.defaultRuntimeId, runtimes),
+    [studioSelection.runtimeId, settings.defaultRuntimeId, runtimes],
+  );
+
+  const activeRuntime = useMemo(
+    () => runtimes.find((r) => r.id === resolvedRuntimeId) ?? runtimes[0],
+    [runtimes, resolvedRuntimeId],
+  );
+
+  const activeThread = useMemo(
+    () => studioThreads.find((t) => t.id === activeStudioThreadId) ?? studioThreads[0],
+    [studioThreads, activeStudioThreadId],
+  );
+
+  /* ---------- local state ---------- */
+  const [input, setInput] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [activeFile, setActiveFile] = useState<string | undefined>();
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>();
+  const [logs, setLogs] = useState<string[]>([]);
+  const [rightTab, setRightTab] = useState<RightTab>("editor");
+  const abortRef = useRef<(() => void) | undefined>(undefined);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  /* ---------- init ---------- */
+  useEffect(() => {
+    ensurePresetsRegistered();
+    if (studioThreads.length === 0) {
+      const t = newThread();
+      addStudioThread(t);
+      setActiveStudioThread(t.id);
+    }
+  }, [addStudioThread, setActiveStudioThread, studioThreads.length]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeThread?.messages.length]);
+
+  /* ---------- actions ---------- */
+  function pushLog(line: string) {
+    const ts = new Date().toLocaleTimeString();
+    setLogs((l) => [...l, `[${ts}] ${line}`].slice(-300));
+  }
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.();
+    setGenerating(false);
+    pushLog("Geração cancelada pelo usuário.");
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || generating) return;
+
+    if (!resolvedProviderId || !resolvedModelId) {
+      toast({ title: "Sem provedor", description: "Configure um provedor e modelo em Configurações.", variant: "error" });
+      return;
+    }
+
+    setInput("");
+    setLogs([]);
+
+    const thread = activeThread ?? (() => {
+      const t = newThread();
+      addStudioThread(t);
+      setActiveStudioThread(t.id);
+      return t;
+    })();
+
+    const userMsg: ChatMessageV2 = {
+      id: msgId(), role: "user", content: text, createdAt: Date.now(),
+    };
+    appendStudioMessage(thread.id, userMsg);
+
+    const assistantMsgId = msgId();
+    const assistantMsg: ChatMessageV2 = {
+      id: assistantMsgId, role: "assistant", content: "", createdAt: Date.now(), streaming: true,
+      runtimeId: resolvedRuntimeId,
+    };
+    appendStudioMessage(thread.id, assistantMsg);
+
+    setGenerating(true);
+
+    const ctrl = new AbortController();
+    abortRef.current = () => ctrl.abort();
+
+    try {
+      const spec = getRuntimeProviderSpec(resolvedProviderId);
+      if (!spec) throw new Error("Não foi possível obter o spec do provedor.");
+
+      const adapter = createAdapter(activeRuntime ?? runtimes[0]);
+      let streamedContent = "";
+
+      await adapter.generateProject({
+        request: text,
+        spec,
+        model: resolvedModelId,
+        maxIterations: 3,
+        signal: ctrl.signal,
+        onEvent: (ev: PipelineEvent) => {
+          if (ev.type === "token") {
+            streamedContent += ev.delta;
+            patchStudioMessage(thread.id, assistantMsgId, { content: streamedContent, streaming: true });
+          } else if (ev.type === "phase") {
+            const msg = ev.message ?? ev.phase;
+            pushLog(`▶ ${msg}`);
+            if (!streamedContent) {
+              streamedContent += `**${msg}**\n\n`;
+              patchStudioMessage(thread.id, assistantMsgId, { content: streamedContent, streaming: true });
+            }
+          } else if (ev.type === "log") {
+            pushLog(ev.message);
+          } else if (ev.type === "file") {
+            pushLog(`✓ ${ev.path}`);
+          } else if (ev.type === "error") {
+            pushLog(`✗ ${ev.message}`);
+          }
+        },
+        onFiles: (generatedFiles) => {
+          setFiles(generatedFiles);
+          if (!activeFile && generatedFiles.length > 0) {
+            setActiveFile(generatedFiles[0].path);
+          }
+        },
+      }).then((result) => {
+        patchStudioMessage(thread.id, assistantMsgId, {
+          content: streamedContent || (result.ok ? "Projeto gerado com sucesso." : `Erro: ${result.error}`),
+          streaming: false,
+        });
+        if (result.previewUrl) {
+          setPreviewUrl(result.previewUrl);
+          setRightTab("preview");
+        }
+        if (!result.ok) {
+          toast({ title: "Falha na geração", description: result.error ?? "Erro desconhecido", variant: "error" });
+        }
+        setGenerating(false);
+      });
+
+    } catch (err) {
+      const message = (err as Error).message;
+      patchStudioMessage(thread.id, assistantMsgId, { content: `Erro: ${message}`, streaming: false });
+      pushLog(`✗ ${message}`);
+      toast({ title: "Erro", description: message, variant: "error" });
+      setGenerating(false);
+    }
+  }, [
+    input, generating, resolvedProviderId, resolvedModelId, resolvedRuntimeId,
+    activeThread, activeRuntime, runtimes,
+    addStudioThread, setActiveStudioThread,
+    appendStudioMessage, patchStudioMessage,
+    activeFile,
+  ]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  /* ---------- render ---------- */
+  const activeFileContent = files.find((f) => f.path === activeFile)?.content ?? "";
+
+  return (
+    <section className="chat-surface app-scrollbar fx-fade-in flex h-full min-h-0 flex-col overflow-hidden rounded-[22px] border border-white/70 lg:rounded-[28px]">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-white/60 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Code2 className="h-5 w-5 text-slate-700" />
+          <span className="text-sm font-semibold text-slate-900">Code Studio</span>
+          {generating && (
+            <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+              <Loader2 className="h-3 w-3 animate-spin" /> Gerando...
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Provider/Model selectors */}
+          {providerOptions.length > 0 && (
+            <select
+              value={resolvedProviderId ?? ""}
+              onChange={(e) => setStudioSelection({ providerId: e.target.value })}
+              className="rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-xs text-slate-700 shadow-sm"
+            >
+              {providerOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+          {modelOptions.length > 0 && (
+            <select
+              value={resolvedModelId ?? ""}
+              onChange={(e) => setStudioSelection({ model: e.target.value })}
+              className="max-w-[160px] rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-xs text-slate-700 shadow-sm"
+            >
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          )}
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { const t = newThread(); addStudioThread(t); setActiveStudioThread(t.id); setFiles([]); setActiveFile(undefined); setPreviewUrl(undefined); setLogs([]); }}
+            className="flex items-center gap-1 rounded-lg border border-white/60 bg-white/70 px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-white/90"
+          >
+            <Plus className="h-3.5 w-3.5" /> Novo
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Split pane */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <SplitPane
+          storageKey="code-studio-split"
+          defaultRatio={0.38}
+          minLeftPx={300}
+          minRightPx={360}
+          left={
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Messages */}
+              <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+                {(activeThread?.messages ?? []).length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                    <Code2 className="h-10 w-10 text-slate-300" />
+                    <p className="text-sm font-medium text-slate-500">Descreva o app que você quer criar</p>
+                    <p className="text-xs text-slate-400">Ex: "App de to-do com dark mode e drag-and-drop"</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {activeThread?.messages.map((msg, i) => (
+                      <ChatBubble key={msg.id} message={msg} index={i} compact />
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Logs */}
+              <AnimatePresence>
+                {logs.length > 0 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 96, opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="shrink-0 overflow-hidden border-t border-white/50"
+                  >
+                    <div className="app-scrollbar h-24 overflow-y-auto bg-slate-950/5 px-3 py-2">
+                      {logs.map((line, i) => (
+                        <p key={i} className="font-mono text-[10px] leading-5 text-slate-600">{line}</p>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Input */}
+              <div className="shrink-0 border-t border-white/60 p-3">
+                <div className="flex gap-2">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Descreva o app... (⌘↵ para enviar)"
+                    rows={3}
+                    disabled={generating}
+                    className="app-scrollbar min-h-0 flex-1 resize-none rounded-xl border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-300 focus:outline-none focus:ring-0 disabled:opacity-50"
+                  />
+                  {generating ? (
+                    <button
+                      onClick={handleStop}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-xl bg-rose-500 text-white shadow hover:bg-rose-600"
+                    >
+                      <Square className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-xl bg-[#17172d] text-white shadow hover:bg-slate-800 disabled:opacity-40"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          }
+          right={
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Right tabs */}
+              <div className="flex shrink-0 items-center gap-1 border-b border-white/60 px-3 py-2">
+                <button
+                  onClick={() => setRightTab("editor")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                    rightTab === "editor"
+                      ? "bg-white/80 text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700",
+                  )}
+                >
+                  <FileCode2 className="h-3.5 w-3.5" /> Editor
+                </button>
+                <button
+                  onClick={() => setRightTab("preview")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                    rightTab === "preview"
+                      ? "bg-white/80 text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700",
+                  )}
+                >
+                  <Eye className="h-3.5 w-3.5" /> Preview
+                </button>
+                {previewUrl && rightTab === "preview" && (
+                  <button
+                    onClick={() => setPreviewUrl(undefined)}
+                    title="Recarregar"
+                    className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {rightTab === "editor" ? (
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                  {/* File tree */}
+                  {files.length > 0 && (
+                    <div className="app-scrollbar w-44 shrink-0 overflow-y-auto border-r border-white/50 bg-white/30 py-2">
+                      <p className="mb-1 flex items-center gap-1 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <FolderOpen className="h-3 w-3" /> Arquivos
+                      </p>
+                      {files.map((f) => (
+                        <button
+                          key={f.path}
+                          onClick={() => setActiveFile(f.path)}
+                          className={cn(
+                            "flex w-full items-center gap-1.5 truncate px-3 py-1 text-left text-[11px] transition",
+                            activeFile === f.path
+                              ? "bg-white/70 font-semibold text-slate-900"
+                              : "text-slate-600 hover:bg-white/50",
+                          )}
+                        >
+                          <FileCode2 className="h-3 w-3 shrink-0 text-slate-400" />
+                          <span className="truncate">{f.path.split("/").pop()}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Monaco editor */}
+                  <div className="min-w-0 flex-1">
+                    {files.length === 0 ? (
+                      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                        <Code2 className="h-12 w-12 text-slate-200" />
+                        <p className="text-sm text-slate-400">Nenhum arquivo gerado ainda</p>
+                      </div>
+                    ) : (
+                      <Editor
+                        height="100%"
+                        path={activeFile}
+                        language={guessLanguage(activeFile ?? "")}
+                        value={activeFileContent}
+                        theme={settings.editorTheme || "vs-dark"}
+                        options={{
+                          readOnly: false,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          lineNumbers: "on",
+                          wordWrap: "on",
+                          scrollBeyondLastLine: false,
+                          renderWhitespace: "none",
+                        }}
+                        onChange={(val) => {
+                          if (val === undefined || !activeFile) return;
+                          setFiles((prev) =>
+                            prev.map((f) => f.path === activeFile ? { ...f, content: val } : f),
+                          );
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-stretch overflow-hidden">
+                  {previewUrl ? (
+                    <iframe
+                      src={previewUrl}
+                      title="preview"
+                      className="min-h-0 flex-1 border-0"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+                    />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                      <Eye className="h-12 w-12 text-slate-200" />
+                      <p className="text-sm text-slate-400">Preview disponível após gerar o projeto</p>
+                      <p className="text-xs text-slate-300">Requer cross-origin isolation (Chrome/Edge)</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          }
+        />
+      </div>
+    </section>
+  );
+}
