@@ -15,11 +15,15 @@ import express from "express";
 import cors from "cors";
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { searchKnowledge } from "./knowledge";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
 const API_AUTH_KEY = process.env.NEXUS_AUTH_KEY ?? process.env.APP_AUTH_KEY ?? "";
+const DIST_DIR = path.resolve(process.cwd(), "dist");
+const DIST_INDEX = path.join(DIST_DIR, "index.html");
 
 type LangGraphModule = typeof import("@langchain/langgraph");
 
@@ -1009,6 +1013,15 @@ app.post("/api/runtimes/proxy", async (req, res) => {
     });
   }
 });
+
+if (existsSync(DIST_INDEX)) {
+  app.use(express.static(DIST_DIR));
+  app.get(/^(?!\/api).*/, (_req, res, next) => {
+    res.sendFile(DIST_INDEX, (err) => {
+      if (err) next(err);
+    });
+  });
+}
 
 app.listen(PORT, () => {
   process.stdout.write(`[perfectagent] api ready on http://127.0.0.1:${PORT}\n`);
