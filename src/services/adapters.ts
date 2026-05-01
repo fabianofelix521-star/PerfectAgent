@@ -12,7 +12,7 @@ import type {
   ChatMessageV2,
   ProjectFile,
 } from "@/types";
-import { api, API_BASE } from "@/services/api";
+import { api, API_BASE, apiFetch } from "@/services/api";
 import { getRuntimeDecoded } from "@/stores/config";
 import {
   runAgentLoop,
@@ -336,7 +336,7 @@ class CustomHttpAdapter implements RuntimeAdapter {
       if (decoded.apiKey) headers["authorization"] = `Bearer ${decoded.apiKey}`;
       // PATCH: Forçar systemPrompt vazio para isolar erro do mimo-v2.5
       const forcedSystem = "";
-      const r = await fetch(`${API_BASE}/api/runtimes/proxy`, {
+      const r = await apiFetch(`${API_BASE}/api/runtimes/proxy`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

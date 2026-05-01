@@ -41,7 +41,11 @@ export function useSmartScroll<T extends HTMLElement>({
       if (!force && userPinnedUpRef.current) return;
 
       requestAnimationFrame(() => {
-        node.scrollTo({ top: node.scrollHeight, behavior });
+        if (typeof node.scrollTo === "function") {
+          node.scrollTo({ top: node.scrollHeight, behavior });
+        } else {
+          node.scrollTop = node.scrollHeight;
+        }
       });
     },
     [behavior],

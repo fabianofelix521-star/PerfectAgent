@@ -4,6 +4,7 @@ import type {
   KnowledgeSearchResponse,
   KnowledgeSourceId,
 } from "@/core/knowledge/types";
+import { useConfig } from "@/stores/config";
 
 export const API_BASE = (() => {
   if (typeof window === "undefined") return "http://127.0.0.1:3336";
@@ -13,6 +14,28 @@ export const API_BASE = (() => {
   }
   return window.location.origin;
 })();
+
+export function getClientApiAuthKey(): string {
+  try {
+    const configuredKey = useConfig.getState().settings.masterKey?.trim();
+    if (configuredKey) return configuredKey;
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("pa:nexusAuthKey")?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function apiHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  const authKey = getClientApiAuthKey();
+  if (authKey) nextHeaders.set("x-nexus-auth", authKey);
+  return nextHeaders;
+}
+
+export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  return fetch(input, { ...init, headers: apiHeaders(init.headers) });
+}
 
 export interface TestResult {
   ok: boolean;
@@ -25,7 +48,7 @@ export interface TestResult {
 export const api = {
   async health(): Promise<{ ok: boolean; ts?: number; error?: string }> {
     try {
-      const r = await fetch(`${API_BASE}/api/health`, { method: "GET" });
+      const r = await apiFetch(`${API_BASE}/api/health`, { method: "GET" });
       if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
       return await r.json();
     } catch (err) {
@@ -34,7 +57,7 @@ export const api = {
   },
 
   async runTool(payload: { kind: string; args: Record<string, unknown>; code?: string }): Promise<{ ok: boolean; result?: unknown; error?: string; latencyMs?: number }> {
-    const r = await fetch(`${API_BASE}/api/tools/run`, {
+    const r = await apiFetch(`${API_BASE}/api/tools/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -43,7 +66,7 @@ export const api = {
   },
 
   async runSystemCommand(command: SystemCommand): Promise<{ success: boolean; exitCode: number; stdout: string; stderr: string; durationMs: number }> {
-    const r = await fetch(`${API_BASE}/api/system/command`, {
+    const r = await apiFetch(`${API_BASE}/api/system/command`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ command }),
@@ -52,7 +75,7 @@ export const api = {
   },
 
   async testIntegration(payload: { url: string; method?: string; headers?: Record<string, string>; body?: unknown }): Promise<{ ok: boolean; status?: number; latencyMs?: number; sample?: string; error?: string }> {
-    const r = await fetch(`${API_BASE}/api/integrations/test`, {
+    const r = await apiFetch(`${API_BASE}/api/integrations/test`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -61,7 +84,7 @@ export const api = {
   },
 
   async mcpList(payload: { url: string; apiKey?: string }): Promise<{ ok: boolean; tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>; latencyMs?: number; error?: string }> {
-    const r = await fetch(`${API_BASE}/api/mcp/list`, {
+    const r = await apiFetch(`${API_BASE}/api/mcp/list`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -70,7 +93,7 @@ export const api = {
   },
 
   async mcpCall(payload: { url: string; apiKey?: string; name: string; arguments?: Record<string, unknown> }): Promise<{ ok: boolean; result?: unknown; latencyMs?: number; error?: string }> {
-    const r = await fetch(`${API_BASE}/api/mcp/call`, {
+    const r = await apiFetch(`${API_BASE}/api/mcp/call`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -79,7 +102,7 @@ export const api = {
   },
 
   async testRuntime(payload: { url: string; apiKey?: string }): Promise<{ ok: boolean; status?: number; latencyMs?: number; sample?: string; error?: string }> {
-    const r = await fetch(`${API_BASE}/api/runtimes/test`, {
+    const r = await apiFetch(`${API_BASE}/api/runtimes/test`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -88,7 +111,7 @@ export const api = {
   },
 
   async testProvider(spec: ProviderSpec): Promise<TestResult> {
-    const r = await fetch(`${API_BASE}/api/providers/test`, {
+    const r = await apiFetch(`${API_BASE}/api/providers/test`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spec }),
@@ -97,7 +120,7 @@ export const api = {
   },
 
   async fetchModels(spec: ProviderSpec): Promise<Array<{ id: string; name?: string }>> {
-    const r = await fetch(`${API_BASE}/api/providers/models`, {
+    const r = await apiFetch(`${API_BASE}/api/providers/models`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spec }),
@@ -111,7 +134,7 @@ export const api = {
     limit?: number;
     sources?: Array<Exclude<KnowledgeSourceId, "local">>;
   }): Promise<KnowledgeSearchResponse> {
-    const r = await fetch(`${API_BASE}/api/knowledge/search`, {
+    const r = await apiFetch(`${API_BASE}/api/knowledge/search`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -139,7 +162,7 @@ export const api = {
     const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/api/chat/stream`, {
+        const r = await apiFetch(`${API_BASE}/api/chat/stream`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -201,7 +224,7 @@ export const api = {
     const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/api/runtimes/langgraph/run`, {
+        const r = await apiFetch(`${API_BASE}/api/runtimes/langgraph/run`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(params.body),

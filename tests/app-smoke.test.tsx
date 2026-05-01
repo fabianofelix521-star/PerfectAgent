@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
@@ -31,7 +31,11 @@ describe("app route smoke", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    expect(await screen.findByText("Operação PerfectAgent")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Operação Nexus Ultra AGI", undefined, {
+        timeout: LAZY_ROUTE_TIMEOUT,
+      }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Novo chat"));
     expect(
@@ -48,6 +52,32 @@ describe("app route smoke", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Este módulo falhou ao renderizar.")).not.toBeInTheDocument();
 
+    await user.click(screen.getByLabelText("Skills Bank"));
+    expect(
+      await screen.findByText("Capacidades reutilizáveis", undefined, {
+        timeout: LAZY_ROUTE_TIMEOUT,
+      }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Web Scraping")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("MCP Hub"));
+    expect(
+      await screen.findByText("Servidores Model Context Protocol", undefined, {
+        timeout: LAZY_ROUTE_TIMEOUT,
+      }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Banco MCP")).toBeInTheDocument();
+    expect(await screen.findByText("File System")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Integrações"));
+    expect(
+      await screen.findByText("Conexões com serviços externos", undefined, {
+        timeout: LAZY_ROUTE_TIMEOUT,
+      }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Banco de integrações")).toBeInTheDocument();
+    expect(await screen.findByText("Slack (Incoming Webhook)")).toBeInTheDocument();
+
     await user.click(screen.getByLabelText("Agentes"));
     expect(
       await screen.findByText("Runtime real com LangGraph", undefined, {
@@ -55,12 +85,10 @@ describe("app route smoke", () => {
       }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Configuracoes"));
-    expect(
-      await screen.findByText("Centro de controle do SaaS agêntico", undefined, {
-        timeout: LAZY_ROUTE_TIMEOUT,
-      }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Configuracoes" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/settings/profile"), {
+      timeout: LAZY_ROUTE_TIMEOUT,
+    });
   }, 20000);
 
   it("renders the Supreme Coordinator panel inside the agent runtime", async () => {
@@ -89,7 +117,9 @@ describe("app route smoke", () => {
 
     await user.click(screen.getByLabelText("Novo chat"));
     await user.type(
-      await screen.findByPlaceholderText("Type your message..."),
+      await screen.findByPlaceholderText("Type your message...", undefined, {
+        timeout: LAZY_ROUTE_TIMEOUT,
+      }),
       "oi",
     );
     await user.click(screen.getByLabelText("Send message"));

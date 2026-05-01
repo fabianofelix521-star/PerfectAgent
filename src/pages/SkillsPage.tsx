@@ -1,19 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrainCircuit, Plus, Pencil, Trash2, Sparkles } from "lucide-react";
 import { useConfig } from "@/stores/config";
+import { skillRegistry } from "@/core/skills/SkillRegistry";
 import { WorkspaceShell, Surface, HeaderAction, Modal, Tag, ToggleRow, EditableField, Spinner } from "@/components/ui";
 import type { Skill } from "@/types";
+import type { Skill as RegistrySkill } from "@/core/skills/types";
 import { toast } from "@/components/Toast";
 
 function rid() { return `sk-${Math.random().toString(36).slice(2, 9)}`; }
 
+function registrySkillToStore(skill: RegistrySkill, existing?: Skill): Skill {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    systemPrompt: skill.promptTemplate ?? skill.description,
+    tags: skill.tags,
+    enabled: existing?.enabled ?? false,
+    builtIn: skill.author === "builtin",
+  };
+}
+
 export function SkillsPage() {
-  const skills = useConfig((s) => s.skills);
+  const storeSkills = useConfig((s) => s.skills);
   const upsertSkill = useConfig((s) => s.upsertSkill);
   const removeSkill = useConfig((s) => s.removeSkill);
   const toggleSkill = useConfig((s) => s.toggleSkill);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [creating, setCreating] = useState(false);
+  const skills = useMemo(() => {
+    const storeById = new Map(storeSkills.map((skill) => [skill.id, skill]));
+    const merged = new Map<string, Skill>();
+    for (const skill of skillRegistry.list()) {
+      merged.set(skill.id, registrySkillToStore(skill, storeById.get(skill.id)));
+    }
+    for (const skill of storeSkills) merged.set(skill.id, skill);
+    return Array.from(merged.values()).sort((a, b) => {
+      if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1;
+      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [storeSkills]);
+
+  function handleToggle(skill: Skill) {
+    if (storeSkills.some((item) => item.id === skill.id)) {
+      toggleSkill(skill.id);
+      return;
+    }
+    upsertSkill({ ...skill, enabled: true });
+  }
 
   return (
     <WorkspaceShell
@@ -30,7 +65,7 @@ export function SkillsPage() {
             </div>
           ) : skills.map((sk) => (
             <SkillCard key={sk.id} skill={sk}
-              onToggle={() => toggleSkill(sk.id)}
+              onToggle={() => handleToggle(sk)}
               onEdit={() => setEditing(sk)}
               onDelete={() => {
                 if (confirm(`Excluir skill "${sk.name}"?`)) { removeSkill(sk.id); toast.info(`Skill "${sk.name}" removida`); }

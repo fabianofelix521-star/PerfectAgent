@@ -24,7 +24,6 @@ export const RUNTIME_TOOL_MAP: Record<string, string[]> = {
     "social-radar",
     "email-campaign",
     "content-publisher",
-    "audience-model-refresh",
   ],
   athena: [
     "deep-web-crawler",
@@ -86,4 +85,23 @@ export const RUNTIME_TOOL_MAP: Record<string, string[]> = {
 
 export function getToolsForRuntime(runtimeId: string): string[] {
   return RUNTIME_TOOL_MAP[runtimeId] ?? RUNTIME_TOOL_MAP["nexus-prime"];
+}
+
+export const SUPERVISOR_TOOL_MAP: Record<string, string[]> = {
+  financial: RUNTIME_TOOL_MAP.prometheus,
+  security: ["tool-inspector", "contradiction-detector", "knowledge-graph", "report-generator"],
+  medical: RUNTIME_TOOL_MAP.apollo,
+  engineering: RUNTIME_TOOL_MAP.vulcan,
+  science: ["hypothesis-generator", "knowledge-suprema", "multi-source-synthesizer", "report-generator"],
+  legal: ["knowledge-suprema", "contradiction-detector", "counterfactual-reasoning", "report-generator"],
+  research: RUNTIME_TOOL_MAP.athena,
+  philosophy: RUNTIME_TOOL_MAP.logos,
+  creative: RUNTIME_TOOL_MAP.morpheus,
+  "ancient-knowledge": RUNTIME_TOOL_MAP.sophia,
+  mathematics: ["causal-reasoning", "analogical-reasoning", "hypothesis-generator", "report-generator"],
+  meta: RUNTIME_TOOL_MAP["nexus-prime"],
+};
+
+export function getToolsForSupervisor(supervisorId: string): string[] {
+  return SUPERVISOR_TOOL_MAP[supervisorId] ?? RUNTIME_TOOL_MAP["nexus-prime"];
 }

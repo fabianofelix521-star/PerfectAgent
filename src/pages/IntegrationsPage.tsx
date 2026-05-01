@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plug, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle } from "lucide-react";
 import { APP_BRAND_NAME, useConfig, getIntegrationDecoded } from "@/stores/config";
 import { WorkspaceShell, Surface, HeaderAction, Modal, EditableField, SelectControl, Spinner, StatusBadge } from "@/components/ui";
@@ -33,6 +33,10 @@ export function IntegrationsPage() {
   const [editing, setEditing] = useState<Integration | null>(null);
   const [creating, setCreating] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const installedKinds = useMemo(
+    () => new Set(integrations.map((item) => item.kind)),
+    [integrations],
+  );
 
   const test = async (id: string) => {
     const i = getIntegrationDecoded(id);
@@ -48,6 +52,24 @@ export function IntegrationsPage() {
     } finally { setTestingId(null); }
   };
 
+  const installPreset = (preset: (typeof KIND_PRESETS)[number]) => {
+    const existing = integrations.find((item) => item.kind === preset.value);
+    if (existing) {
+      setEditing(existing);
+      return;
+    }
+
+    upsert({
+      id: `in-${preset.value}`,
+      name: preset.label,
+      kind: preset.value,
+      connected: false,
+      method: "POST",
+      ...preset.defaults,
+    });
+    toast.success(`${preset.label} adicionado ao banco`);
+  };
+
   return (
     <WorkspaceShell
       eyebrow="Integrações"
@@ -56,12 +78,26 @@ export function IntegrationsPage() {
       action={<HeaderAction icon={Plus} label="Nova integração" onClick={() => setCreating(true)} />}
     >
       <Surface>
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-950">Conexões configuradas</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {integrations.length ? `${integrations.length} integração(ões) no workspace.` : "Nenhuma conexão ativa ainda."}
+            </p>
+          </div>
           {integrations.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-sm text-slate-500">
-              Sem integrações. <button className="font-bold text-slate-900 underline" onClick={() => setCreating(true)}>Adicionar uma</button>
-            </div>
-          ) : integrations.map((i) => (
+            <button className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setCreating(true)}>
+              Custom HTTP
+            </button>
+          ) : null}
+        </div>
+        {integrations.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-8 text-center text-sm text-slate-500">
+            Use o banco abaixo para adicionar Slack, GitHub, Notion, Airtable, Linear e outros presets.
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {integrations.map((i) => (
             <div key={i.id} className="rounded-3xl border border-white/70 bg-white/60 p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -96,7 +132,44 @@ export function IntegrationsPage() {
                 </button>
               </div>
             </div>
-          ))}
+            ))}
+          </div>
+        )}
+      </Surface>
+
+      <Surface className="mt-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-bold text-slate-950">Banco de integrações</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            Presets prontos para configurar endpoints, tokens e payloads sem começar do zero.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {KIND_PRESETS.map((preset) => {
+            const installed = installedKinds.has(preset.value);
+            return (
+              <div key={preset.value} className="rounded-3xl border border-white/70 bg-white/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-950">{preset.label}</h3>
+                    <p className="mt-1 font-mono text-[11px] text-slate-500">
+                      {preset.defaults.method ?? "POST"} {preset.defaults.url ?? "URL configurável"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                    {preset.value}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => installPreset(preset)}
+                  className="mt-4 rounded-full bg-[#17172d] px-3 py-1.5 text-xs font-bold text-white disabled:bg-slate-200 disabled:text-slate-500"
+                >
+                  {installed ? "Configurar" : "Adicionar"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </Surface>
 

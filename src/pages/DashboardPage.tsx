@@ -1,14 +1,18 @@
 import { useMemo } from "react";
 import {
+  Blocks,
   Bot,
+  BrainCircuit,
   Code2,
   FileText,
   GitBranch,
   MessageSquare,
+  Plug,
   Settings,
   Wrench,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   Line,
   LineChart,
@@ -215,8 +219,10 @@ export function DashboardPage() {
         <QuickAccess to="/agents" icon={Bot} label="Agentes" />
         <QuickAccess to="/workflow" icon={GitBranch} label="Workflow" />
         <QuickAccess to="/documents" icon={FileText} label="Documentos" />
+        <QuickAccess to="/skills" icon={BrainCircuit} label="Skills Bank" />
         <QuickAccess to="/tools" icon={Wrench} label="Ferramentas" />
-        <QuickAccess to="/integrations" icon={Zap} label="Integrações" />
+        <QuickAccess to="/integrations" icon={Plug} label="Integrações" />
+        <QuickAccess to="/mcp" icon={Blocks} label="MCP Hub" />
         <QuickAccess to="/settings" icon={Settings} label="Configurações" />
       </div>
     </WorkspaceShell>
@@ -230,7 +236,7 @@ function MetricCard({
 }: {
   title: string;
   value: string;
-  icon: typeof MessageSquare;
+  icon: LucideIcon;
 }) {
   return (
     <Surface className="min-h-32">
@@ -266,7 +272,7 @@ function QuickAccess({
   label,
 }: {
   to: string;
-  icon: typeof MessageSquare;
+  icon: LucideIcon;
   label: string;
 }) {
   return (

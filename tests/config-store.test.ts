@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useConfig, defaultCapabilitiesFor } from "@/stores/config";
+import {
+  useConfig,
+  defaultCapabilitiesFor,
+  getDefaultModel,
+  hasValidAPIKey,
+} from "@/stores/config";
 import { presetById } from "@/services/providers";
 import type { AgentRuntime, ProviderConfig } from "@/types";
 
@@ -146,5 +151,41 @@ describe("model dropdown source-of-truth (CodeStudio bug fix)", () => {
 
   it("returns empty list for unknown provider", () => {
     expect(computeModelOptions("nope")).toEqual([]);
+  });
+});
+
+describe("config helper selectors", () => {
+  beforeEach(() => resetStore());
+
+  it("recognizes providers that do not require API keys", () => {
+    useConfig.getState().upsertProvider(baseProvider({
+      id: "ollama",
+      presetId: "ollama",
+      name: "Ollama",
+      spec: { shape: "ollama", baseUrl: "http://localhost:11434/v1", authMode: "none" },
+      apiKey: undefined,
+      configured: true,
+    }));
+    expect(hasValidAPIKey("ollama")).toBe(true);
+  });
+
+  it("recognizes stored API keys after provider upsert", () => {
+    useConfig.getState().upsertProvider(baseProvider({ spec: { shape: "openai", baseUrl: "https://api.openai.com/v1", authMode: "bearer", apiKey: "sk-live" } }));
+    expect(hasValidAPIKey("openai")).toBe(true);
+  });
+
+  it("returns the configured default model for a provider", () => {
+    useConfig.getState().upsertProvider(baseProvider({
+      defaultModel: "gpt-4o",
+      fetchedModels: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }],
+    }));
+    useConfig.setState({
+      settings: {
+        ...useConfig.getState().settings,
+        defaultProviderId: "openai",
+        defaultModelId: "gpt-4o-mini",
+      },
+    } as never);
+    expect(getDefaultModel("openai")?.id).toBe("gpt-4o-mini");
   });
 });

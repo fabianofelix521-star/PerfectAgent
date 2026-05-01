@@ -41,6 +41,7 @@ import { BrandLockup, BrandMark } from "@/components/Brand";
 import { APP_BRAND_NAME, useConfig } from "@/stores/config";
 import { useSidebarStore } from "@/core/state/navigationStore";
 import { useBreakpoint } from "@/shared/hooks/useBreakpoint";
+import type { AppRoute } from "@/types";
 import { cn } from "@/utils/cn";
 
 type ModuleName =
@@ -55,6 +56,10 @@ type ModuleName =
   | "VideoStudio"
   | "AudioStudio"
   | "Documents"
+  | "SkillsBank"
+  | "Tools"
+  | "Integrations"
+  | "MCPHub"
   | "Settings"
   | "SettingsProfile"
   | "SettingsAPIKeys"
@@ -62,7 +67,7 @@ type ModuleName =
   | "SettingsBilling"
   | "NotFound";
 
-export const ROUTES: Array<{ path: string; module: ModuleName }> = [
+export const ROUTES: Array<AppRoute<ModuleName>> = [
   { path: "/", module: "Dashboard" },
   { path: "/chat", module: "ChatHub" },
   { path: "/chat/:sessionId", module: "ChatHub" },
@@ -76,7 +81,13 @@ export const ROUTES: Array<{ path: string; module: ModuleName }> = [
   { path: "/video-studio", module: "VideoStudio" },
   { path: "/audio-studio", module: "AudioStudio" },
   { path: "/documents", module: "Documents" },
-  { path: "/settings", module: "Settings" },
+  { path: "/skills", module: "SkillsBank" },
+  { path: "/tools", module: "Tools" },
+  { path: "/integrations", module: "Integrations" },
+  { path: "/mcp", module: "MCPHub" },
+  { path: "/mcp-hub", module: "MCPHub", aliases: ["/mcp", "/extensions"] },
+  { path: "/extensions", module: "MCPHub" },
+  { path: "/settings", module: "SettingsProfile", aliases: ["/settings/profile"] },
   { path: "/settings/profile", module: "SettingsProfile" },
   { path: "/settings/api-keys", module: "SettingsAPIKeys" },
   { path: "/settings/models", module: "SettingsModels" },
@@ -125,15 +136,18 @@ const SettingsPage = lazyNamed<{
   () => import("@/pages/SettingsPage"),
   "SettingsPage",
 );
-const SkillsPage = lazyNamed(() => import("@/pages/SkillsPage"), "SkillsPage");
+const SkillsBankPage = lazyNamed(
+  () => import("@/modules/skills-bank/SkillsBankPage"),
+  "SkillsBankPage",
+);
 const ToolsPage = lazyNamed(() => import("@/pages/ToolsPage"), "ToolsPage");
 const IntegrationsPage = lazyNamed(
-  () => import("@/pages/IntegrationsPage"),
+  () => import("@/modules/integrations/IntegrationsPage"),
   "IntegrationsPage",
 );
-const ExtensionsPage = lazyNamed(
-  () => import("@/pages/ExtensionsPage"),
-  "ExtensionsPage",
+const MCPHubPage = lazyNamed(
+  () => import("@/modules/mcp-hub/MCPHubPage"),
+  "MCPHubPage",
 );
 const NotFoundPage = lazyNamed(
   () => import("@/pages/NotFoundPage"),
@@ -259,15 +273,15 @@ export function AppRouter() {
               </RouteFrame>
             }
           />
+          <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
           <Route
-            path="settings"
+            path="settings/profile"
             element={
               <RouteFrame>
-                <SettingsPage />
+                <SettingsPage initialTab="general" />
               </RouteFrame>
             }
           />
-          <Route path="settings/profile" element={<Navigate to="/settings" replace />} />
           <Route
             path="settings/api-keys"
             element={
@@ -392,7 +406,7 @@ export function AppRouter() {
             path="skills"
             element={
               <RouteFrame>
-                <SkillsPage />
+                <SkillsBankPage />
               </RouteFrame>
             }
           />
@@ -416,7 +430,23 @@ export function AppRouter() {
             path="extensions"
             element={
               <RouteFrame>
-                <ExtensionsPage />
+                <MCPHubPage />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="mcp"
+            element={
+              <RouteFrame>
+                <MCPHubPage />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="mcp-hub"
+            element={
+              <RouteFrame>
+                <MCPHubPage />
               </RouteFrame>
             }
           />
@@ -543,10 +573,10 @@ const navItems: NavItem[] = [
     icon: FileText,
     match: (path) => path.startsWith("/documents"),
   },
-  { path: "/skills", label: "Skills", helper: "Capacidades", icon: BrainCircuit, match: (path) => path.startsWith("/skills") },
+  { path: "/skills", label: "Skills Bank", helper: "Capacidades", icon: BrainCircuit, match: (path) => path.startsWith("/skills") },
   { path: "/tools", label: "Ferramentas", helper: "Acoes", icon: Wrench, match: (path) => path.startsWith("/tools") },
-  { path: "/integrations", label: "Integracoes", helper: "Conexoes", icon: Plug, match: (path) => path.startsWith("/integrations") },
-  { path: "/extensions", label: "MCP", helper: "Extensoes", icon: Blocks, match: (path) => path.startsWith("/extensions") },
+  { path: "/integrations", label: "Integrações", helper: "Conexões", icon: Plug, match: (path) => path.startsWith("/integrations") },
+  { path: "/mcp-hub", label: "MCP Hub", helper: "Extensões", icon: Blocks, match: (path) => path.startsWith("/mcp") || path.startsWith("/extensions") },
   { path: "/settings", label: "Configuracoes", helper: "Sistema", icon: Settings, match: (path) => path.startsWith("/settings") },
 ];
 
@@ -745,11 +775,11 @@ function SidebarContent({
   return (
     <div
       className={cn(
-        "flex h-full flex-col items-center justify-between py-4 lg:py-5",
+        "flex h-full min-h-0 flex-col items-center py-4 lg:py-5",
         isCollapsed ? "gap-2" : "gap-2.5",
       )}
     >
-      <div className="flex flex-col items-center gap-2.5">
+      <div className="shrink-0">
         <button
           type="button"
           onClick={onCreateNewChat}
@@ -763,14 +793,17 @@ function SidebarContent({
             primary
           />
         </button>
-        <div className="mt-0.5 flex flex-col items-center gap-2.5">
-          {navItems.map((item) => (
-            <IconLink key={item.path} item={item} active={item.match(pathname)} />
-          ))}
-        </div>
       </div>
+      <nav
+        aria-label="Módulos"
+        className="app-scrollbar mt-2 flex min-h-0 flex-1 flex-col items-center gap-2.5 overflow-y-auto px-2 py-1"
+      >
+        {navItems.map((item) => (
+          <IconLink key={item.path} item={item} active={item.match(pathname)} />
+        ))}
+      </nav>
       <Link
-        className="inline-flex"
+        className="mt-2 inline-flex shrink-0"
         aria-label={APP_BRAND_NAME}
         to="/"
       >

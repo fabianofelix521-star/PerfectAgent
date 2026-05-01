@@ -590,6 +590,50 @@ function SVGViewer({ file, zoom }: { file: ViewerFile; zoom: number }) {
   );
 }
 
+function sanitizeViewerHtml(html: string): string {
+  if (typeof DOMParser === "undefined") return "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const blockedTags = new Set([
+    "base",
+    "button",
+    "embed",
+    "form",
+    "iframe",
+    "input",
+    "link",
+    "meta",
+    "object",
+    "script",
+    "select",
+    "style",
+    "textarea",
+  ]);
+
+  doc.body.querySelectorAll("*").forEach((node) => {
+    const element = node as HTMLElement;
+    const tagName = element.tagName.toLowerCase();
+    if (blockedTags.has(tagName)) {
+      element.remove();
+      return;
+    }
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().toLowerCase();
+      const isUrlAttribute = name === "href" || name === "src" || name === "xlink:href";
+      if (
+        name.startsWith("on") ||
+        name === "srcdoc" ||
+        name === "style" ||
+        (isUrlAttribute && /^(javascript|data):/.test(value))
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+}
+
 function DocxViewer({ file }: { file: ViewerFile }) {
   const [html, setHtml] = useState("<p>Carregando...</p>");
   useEffect(() => {
@@ -597,7 +641,7 @@ function DocxViewer({ file }: { file: ViewerFile }) {
     void (async () => {
       const arrayBuffer = await resolveArrayBuffer(file);
       const result = await mammoth.convertToHtml({ arrayBuffer });
-      if (!cancelled) setHtml(result.value || "<p>Sem conteúdo.</p>");
+      if (!cancelled) setHtml(sanitizeViewerHtml(result.value || "<p>Sem conteúdo.</p>"));
     })();
     return () => {
       cancelled = true;
@@ -753,13 +797,7 @@ async function runOCR(file: ViewerFile): Promise<string> {
 
   const Tesseract = await import("tesseract.js") as unknown as TesseractLike;
   const source = await resolveFileUrl(file);
-  const { data } = await Tesseract.recognize(source, "por+eng", {
-    logger: (message) => {
-      if (message.status === "recognizing text") {
-        console.log(`OCR ${Math.round((message.progress ?? 0) * 100)}%`);
-      }
-    },
-  });
+  const { data } = await Tesseract.recognize(source, "por+eng");
   return data.text;
 }
 

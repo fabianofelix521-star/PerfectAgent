@@ -14,10 +14,12 @@
 import express from "express";
 import cors from "cors";
 import { spawn } from "node:child_process";
+import { timingSafeEqual } from "node:crypto";
 import { searchKnowledge } from "./knowledge";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
+const API_AUTH_KEY = process.env.NEXUS_AUTH_KEY ?? process.env.APP_AUTH_KEY ?? "";
 
 type LangGraphModule = typeof import("@langchain/langgraph");
 
@@ -40,6 +42,21 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "10mb" }));
+
+function safeTokenEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+app.use("/api", (req, res, next) => {
+  if (!API_AUTH_KEY || req.path === "/health") return next();
+  const headerToken = req.header("x-nexus-auth") ?? req.header("x-api-key") ?? "";
+  const bearerToken = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const token = headerToken || bearerToken;
+  if (token && safeTokenEqual(token, API_AUTH_KEY)) return next();
+  return res.status(401).json({ ok: false, error: "unauthorized" });
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: Date.now() });

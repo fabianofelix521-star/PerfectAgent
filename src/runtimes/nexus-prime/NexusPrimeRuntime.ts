@@ -23,6 +23,9 @@ import {
 } from "@/runtimes/shared/cognitiveCore";
 import { SophiaRuntime } from "@/runtimes/sophia/SophiaRuntime";
 import { codeDiffFromText, VulcanRuntime } from "@/runtimes/vulcan/VulcanRuntime";
+import type { NexusToolInput, NexusToolOutput } from "@/tools/core/NexusToolBase";
+import { ToolRegistry } from "@/tools/core/ToolRegistry";
+import { getToolsForRuntime } from "@/tools/runtimeIntegration";
 
 export interface CognitiveParliamentSession {
   sessionId: string;
@@ -280,8 +283,11 @@ export class NexusPrimeRuntime {
   async process(query: string): Promise<NexusPrimeResponse> {
     const started = now();
     const relevantRuntimes = await this.classifyQuery(query);
-    const perspectives = await Promise.all(
+    const basePerspectives = await Promise.all(
       relevantRuntimes.map((runtimeId) => this.getRuntimePerspective(runtimeId, query)),
+    );
+    const perspectives = await Promise.all(
+      basePerspectives.map((perspective) => this.enrichPerspectiveWithTools(perspective, query)),
     );
     const emergentInsights = this.emergenceDetector.detectEmergence(perspectives);
     const synthesis = await this.parliament.convene(query, relevantRuntimes, perspectives);
@@ -509,6 +515,72 @@ export class NexusPrimeRuntime {
     }
   }
 
+  private async enrichPerspectiveWithTools(
+    perspective: RuntimePerspective,
+    query: string,
+  ): Promise<RuntimePerspective> {
+    if (!ToolRegistry.getAll().length) ToolRegistry.autoRegister();
+    const candidateToolIds = getToolsForRuntime(perspective.runtimeId)
+      .filter((toolId) => ToolRegistry.get(toolId))
+      .filter((toolId) => shouldUseToolForQuery(toolId, query))
+      .slice(0, 4);
+
+    if (!candidateToolIds.length) return perspective;
+
+    const settled = await Promise.allSettled(
+      candidateToolIds.map(async (toolId) => {
+        const tool = ToolRegistry.get(toolId);
+        if (!tool) return undefined;
+        const output = await tool.execute(this.buildToolInput(toolId, perspective.runtimeId, query));
+        return [toolId, output] as const;
+      }),
+    );
+
+    const outputs = settled
+      .filter((item): item is PromiseFulfilledResult<readonly [string, NexusToolOutput] | undefined> => item.status === "fulfilled")
+      .map((item) => item.value)
+      .filter((item): item is readonly [string, NexusToolOutput] => Boolean(item));
+
+    if (!outputs.length) return perspective;
+
+    const avgToolQuality = mean(outputs.map(([, output]) => output.quality));
+    const toolEvidence = outputs
+      .slice(0, 5)
+      .map(([toolId, output]) => `${toolId}:${Math.round(output.quality * 100)}%`);
+    const limitations = outputs.flatMap(([, output]) => output.limitationsEncountered ?? []);
+    const learning = outputs
+      .map(([toolId, output]) => output.learningExtracted ? `${toolId}: ${output.learningExtracted}` : "")
+      .filter(Boolean);
+
+    return {
+      ...perspective,
+      perspective: [
+        perspective.perspective,
+        `Tool Forge executou ${outputs.length} tools (${toolEvidence.join(", ")}).`,
+      ].join(" "),
+      confidence: clamp01(perspective.confidence * 0.76 + avgToolQuality * 0.24),
+      evidence: uniqueMerge(perspective.evidence, [...toolEvidence, ...learning], 10),
+      limitations: uniqueMerge(perspective.limitations, limitations, 10),
+    };
+  }
+
+  private buildToolInput(toolId: string, runtimeId: string, query: string): NexusToolInput {
+    return {
+      params: buildToolParams(toolId, runtimeId, query),
+      priority: "normal",
+      budgetMs: 7000,
+      qualityThreshold: 0.6,
+      context: {
+        agentId: `nexus-prime:${runtimeId}`,
+        runtimeId,
+        sessionId: stableId(`${runtimeId}:${toolId}:${query}`),
+        previousToolOutputs: new Map(),
+        sharedMemory: new Map([["query", query]]),
+        executionDepth: 0,
+      },
+    };
+  }
+
   private buildDebate(perspectives: RuntimePerspective[]): DebateRecord[] {
     return perspectives.flatMap((perspective, index) => [
       {
@@ -569,4 +641,103 @@ export class NexusAGIBorderSystem {
   async query(input: string): Promise<NexusPrimeResponse> {
     return this.nexusPrime.process(input);
   }
+}
+
+function shouldUseToolForQuery(toolId: string, query: string): boolean {
+  if (toolId !== "knowledge-suprema") return true;
+  return keywordScore(query, [
+    "paper",
+    "pubmed",
+    "arxiv",
+    "fonte",
+    "source",
+    "research",
+    "pesquisa",
+    "medical",
+    "clinical",
+    "evidence",
+  ]) > 0.05;
+}
+
+function buildToolParams(
+  toolId: string,
+  runtimeId: string,
+  query: string,
+): Record<string, unknown> {
+  const base = { query, runtimeId };
+  switch (toolId) {
+    case "dark-pool-detector":
+      return { ...base, asset: inferAsset(query), lookbackHours: 6, type: "dark-pool" };
+    case "blockchain-scanner":
+      return { ...base, chains: inferChains(query), alertThreshold: 0.66 };
+    case "bayesian-updater":
+      return {
+        ...base,
+        priorProbability: 0.5,
+        likelihoodRatioPositive: 1.45 + keywordScore(query, ["evidence", "sinal", "dados", "metric"]) * 2,
+        likelihoodRatioNegative: 0.72,
+        evidencePresent: true,
+      };
+    case "causal-reasoning":
+      return {
+        ...base,
+        cause: inferCause(runtimeId),
+        effect: inferEffect(runtimeId),
+        observationalData: {
+          baseline: 0.5,
+          queryLength: query.length / 1000,
+          risk: keywordScore(query, ["risk", "risco", "falha", "erro"]),
+        },
+        interventionData: {
+          outcome: keywordScore(query, ["improve", "otimizar", "crescer", "resolver", "deploy"]) + 0.15,
+        },
+      };
+    case "knowledge-suprema":
+      return { ...base, limit: 4, sources: ["local"], includeLocal: true, ingest: false };
+    case "tool-composer":
+      return { ...base, objective: query, constraints: ["quality-first"] };
+    default:
+      return base;
+  }
+}
+
+function inferAsset(query: string): string {
+  const upper = query.toUpperCase();
+  if (/\bSOL|SOLANA\b/.test(upper)) return "SOL";
+  if (/\bBTC|BITCOIN\b/.test(upper)) return "BTC";
+  if (/\bETH|ETHEREUM\b/.test(upper)) return "ETH";
+  if (/\bBASE\b/.test(upper)) return "BASE";
+  return "SOL";
+}
+
+function inferChains(query: string): string[] {
+  const lower = query.toLowerCase();
+  const chains = [
+    lower.includes("solana") || lower.includes("sol") ? "solana" : "",
+    lower.includes("ethereum") || lower.includes("eth") ? "ethereum" : "",
+    lower.includes("base") ? "base" : "",
+    lower.includes("arbitrum") ? "arbitrum" : "",
+    lower.includes("bsc") || lower.includes("binance") ? "bsc" : "",
+  ].filter(Boolean);
+  return chains.length ? chains : ["solana", "ethereum", "base"];
+}
+
+function inferCause(runtimeId: string): string {
+  const causes: Record<string, string> = {
+    hermes: "message",
+    vulcan: "code-change",
+    oracle: "strategic-action",
+    "prometheus-mind": "protocol",
+  };
+  return causes[runtimeId] ?? "intervention";
+}
+
+function inferEffect(runtimeId: string): string {
+  const effects: Record<string, string> = {
+    hermes: "conversion",
+    vulcan: "defect-rate",
+    oracle: "strategic-outcome",
+    "prometheus-mind": "cognitive-performance",
+  };
+  return effects[runtimeId] ?? "outcome";
 }

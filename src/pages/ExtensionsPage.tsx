@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Blocks, Plus, RefreshCw, Trash2, Pencil, Play, CheckCircle2, XCircle } from "lucide-react";
 import { useConfig, getMcpServerDecoded } from "@/stores/config";
+import { MCP_CATALOG } from "@/core/mcp/MCPServerRegistry";
+import type { MCPServerDefinition } from "@/core/mcp/types";
 import { WorkspaceShell, Surface, HeaderAction, Modal, EditableField, SelectControl, ToggleRow, Spinner, StatusBadge } from "@/components/ui";
 import type { McpServer } from "@/types";
 import { api } from "@/services/api";
@@ -19,6 +21,17 @@ export function ExtensionsPage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [calling, setCalling] = useState<{ server: McpServer; toolName: string } | null>(null);
+  const installedCatalogIds = useMemo(
+    () =>
+      new Set(
+        servers.flatMap((server) => [
+          server.id,
+          server.id.replace(/^mcp-/, ""),
+          server.name.toLowerCase().replace(/\s+/g, "-"),
+        ]),
+      ),
+    [servers],
+  );
 
   const refreshTools = async (id: string) => {
     const m = getMcpServerDecoded(id);
@@ -37,6 +50,26 @@ export function ExtensionsPage() {
     } finally { setBusyId(null); }
   };
 
+  const installCatalogServer = (definition: MCPServerDefinition) => {
+    const id = `mcp-${definition.id}`;
+    const existing = servers.find(
+      (server) => server.id === id || server.id === definition.id,
+    );
+    if (existing) {
+      setEditing(existing);
+      return;
+    }
+
+    upsert({
+      id,
+      name: definition.name,
+      transport: "http",
+      enabled: false,
+      tools: definition.tools.map((name) => ({ name })),
+    });
+    toast.success(`${definition.name} adicionado ao banco MCP`);
+  };
+
   return (
     <WorkspaceShell
       eyebrow="MCP"
@@ -45,9 +78,22 @@ export function ExtensionsPage() {
       action={<HeaderAction icon={Plus} label="Novo servidor" onClick={() => setCreating(true)} />}
     >
       <Surface>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-950">Servidores configurados</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {servers.length ? `${servers.length} servidor(es) no workspace.` : "Nenhum servidor conectado ainda."}
+            </p>
+          </div>
+          {servers.length === 0 ? (
+            <button className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setCreating(true)}>
+              Servidor custom
+            </button>
+          ) : null}
+        </div>
         {servers.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-sm text-slate-500">
-            Nenhum servidor MCP. <button className="font-bold text-slate-900 underline" onClick={() => setCreating(true)}>Adicionar</button>
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-8 text-center text-sm text-slate-500">
+            Use o banco MCP abaixo para adicionar servidores oficiais e presets comuns.
             <div className="mt-4 text-xs">
               Servidores MCP via HTTP recebem requisições JSON-RPC 2.0 (<code>tools/list</code>, <code>tools/call</code>).
             </div>
@@ -111,6 +157,72 @@ export function ExtensionsPage() {
             ))}
           </div>
         )}
+      </Surface>
+
+      <Surface className="mt-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-bold text-slate-950">Banco MCP</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            Catálogo de servidores Model Context Protocol para arquivos, memória, busca, banco de dados, GitHub e automação.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {MCP_CATALOG.map((definition) => {
+            const installed =
+              installedCatalogIds.has(definition.id) ||
+              installedCatalogIds.has(`mcp-${definition.id}`);
+            return (
+              <div key={definition.id} className="rounded-3xl border border-white/70 bg-white/60 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl" aria-hidden="true">{definition.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate text-sm font-bold text-slate-950">{definition.name}</h3>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                        {definition.category}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs font-medium text-slate-500">
+                      {definition.description}
+                    </p>
+                    <p className="mt-2 truncate font-mono text-[11px] text-slate-500">
+                      {definition.package}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {definition.tools.slice(0, 4).map((tool) => (
+                    <span key={tool} className="rounded-full bg-slate-950/5 px-2 py-0.5 font-mono text-[10px] text-slate-600">
+                      {tool}
+                    </span>
+                  ))}
+                  {definition.tools.length > 4 ? (
+                    <span className="rounded-full bg-slate-950/5 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                      +{definition.tools.length - 4}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <a
+                    href={definition.docsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-slate-500 underline underline-offset-4 hover:text-slate-900"
+                  >
+                    Docs
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => installCatalogServer(definition)}
+                    className="rounded-full bg-[#17172d] px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    {installed ? "Configurar" : "Adicionar"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Surface>
 
       <McpEditor open={creating} server={null}

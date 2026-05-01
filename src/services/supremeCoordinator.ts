@@ -28,6 +28,7 @@ import {
   TaskRouter,
   normalizeSupervisorId,
 } from "@/modules/supreme/agents/strategic/TaskRouter";
+import { getToolsForSupervisor } from "@/tools/runtimeIntegration";
 import type { BaseAgent } from "@/types/agents";
 
 const STORAGE_KEY = "supreme-coordinator-agents-v1";
@@ -694,6 +695,13 @@ class SupremeCoordinatorStore {
       `Strategic Layer → ${supervisor.tier.toUpperCase()} path → ${supervisor.emoji} ${supervisor.name}`,
     );
     if (matched.length) parts.push(`Matched tags: ${matched.join(", ")}`);
+    const toolPalette = getToolsForSupervisor(supervisor.id);
+    if (toolPalette.length) {
+      parts.push(`Nexus Tool Forge palette: ${toolPalette.join(", ")}`);
+      parts.push(
+        "Use these tools as cognitive capabilities: reason about whether each one is appropriate, execute only when useful, evaluate quality, and learn from failures.",
+      );
+    }
     if (agent) {
       parts.push(`\n## Specialist on duty: ${agent.name}`);
       parts.push(agent.description);

@@ -6,6 +6,91 @@
  * stores and pickers (`baseUrl`, `enabled`, `providerId`, `defaultModelId`).
  */
 
+export interface BaseEntity {
+  id: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export type EntityStatus =
+  | "draft"
+  | "active"
+  | "inactive"
+  | "archived"
+  | "running"
+  | "paused"
+  | "error";
+
+export type AppRouteGroup =
+  | "core"
+  | "workspace"
+  | "automation"
+  | "media"
+  | "knowledge"
+  | "settings";
+
+export interface AppRoute<TModule extends string = string> {
+  path: string;
+  module: TModule;
+  label?: string;
+  group?: AppRouteGroup;
+  nav?: boolean;
+  aliases?: string[];
+}
+
+export interface User extends BaseEntity {
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  role: "owner" | "admin" | "member" | "viewer";
+  locale?: "pt-BR" | "en-US";
+  status: Extract<EntityStatus, "active" | "inactive" | "archived">;
+}
+
+export interface Project extends BaseEntity {
+  name: string;
+  description?: string;
+  files: ProjectFile[];
+  ownerId?: string;
+  status: Extract<EntityStatus, "draft" | "active" | "archived">;
+  activeFile?: string;
+  previewUrl?: string;
+}
+
+export interface ChatSession extends BaseEntity {
+  title: string;
+  providerId?: string;
+  modelId?: string;
+  runtimeId?: string;
+  skillIds: string[];
+  messages: ChatMessageV2[];
+  status: Extract<EntityStatus, "active" | "archived" | "error">;
+}
+
+export interface Agent extends BaseEntity {
+  name: string;
+  description?: string;
+  runtimeId?: string;
+  runtimeKind?: RuntimeKind;
+  providerId?: string;
+  modelId?: string;
+  skillIds: string[];
+  capabilities?: RuntimeCapabilities;
+  status: Extract<EntityStatus, "active" | "inactive" | "running" | "paused" | "error">;
+}
+
+export interface Workflow extends BaseEntity {
+  name: string;
+  description?: string;
+  nodes: RuntimeNode[];
+  edges: RuntimeEdge[];
+  entry: string;
+  exits: string[];
+  status: Extract<EntityStatus, "draft" | "active" | "archived" | "running" | "paused" | "error">;
+}
+
+export type APIResponse<T> = ApiEnvelope<T>;
+
 export type ProviderShape =
   | "openai"
   | "anthropic"

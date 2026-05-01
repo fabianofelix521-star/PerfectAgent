@@ -1316,6 +1316,69 @@ export function getRuntimeProviderSpec(providerId: string | undefined) {
   return cfg ? buildSpecFromConfig(cfg) : undefined;
 }
 
+export function getDefaultProvider(): ProviderConfig | undefined {
+  const state = useConfig.getState();
+  return (
+    (state.settings.defaultProviderId
+      ? state.providers[state.settings.defaultProviderId]
+      : undefined) ?? Object.values(state.providers).find((provider) => provider.enabled)
+  );
+}
+
+export function hasValidAPIKey(providerId?: string): boolean {
+  const state = useConfig.getState();
+  const provider = providerId ? state.providers[providerId] : getDefaultProvider();
+  if (!provider) return false;
+  const spec = buildSpecFromConfig(provider);
+  if (spec.authMode === "none") return true;
+  return Boolean(spec.apiKey?.trim());
+}
+
+export function getDefaultModel(providerId?: string): ModelConfig | undefined {
+  const state = useConfig.getState();
+  const selectedProviderId =
+    providerId ?? state.settings.defaultProviderId ?? getDefaultProvider()?.id;
+  const providerModels = selectedProviderId
+    ? state.models.filter((model) => model.providerId === selectedProviderId)
+    : state.models;
+  const enabledModels = providerModels.filter((model) => model.enabled);
+  return (
+    enabledModels.find((model) => model.id === state.settings.defaultModelId) ??
+    enabledModels[0] ??
+    providerModels[0] ??
+    state.models.find((model) => model.enabled) ??
+    state.models[0]
+  );
+}
+
+export function useRequireAPIKey(providerId?: string) {
+  return useConfig((state) => {
+    const provider = providerId
+      ? state.providers[providerId]
+      : (state.settings.defaultProviderId
+          ? state.providers[state.settings.defaultProviderId]
+          : undefined) ?? Object.values(state.providers).find((item) => item.enabled);
+    const authMode = provider?.spec.authMode ?? "bearer";
+    const requiresKey = authMode !== "none";
+    const apiKey = provider
+      ? deobfuscate(provider.spec.apiKey ?? provider.apiKey ?? "").trim()
+      : "";
+    const hasKey = Boolean(provider && (!requiresKey || apiKey));
+    return {
+      provider,
+      providerId: provider?.id,
+      requiresKey,
+      hasKey,
+      configured: Boolean(provider?.configured && hasKey),
+      missingReason: hasKey
+        ? undefined
+        : provider
+          ? "provider-api-key-missing"
+          : "provider-not-found",
+    };
+  });
+}
+
 export function getIntegrationDecoded(id: string): Integration | undefined {
   const i = useConfig.getState().integrations.find((x) => x.id === id);
   if (!i) return undefined;
