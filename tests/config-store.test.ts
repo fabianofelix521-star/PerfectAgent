@@ -86,8 +86,14 @@ describe("config store \u2014 unified runtime registry", () => {
   });
 });
 
-describe("defaultCapabilitiesFor \u2014 covers every RuntimeKind including omega-cognition", () => {
-  const kinds = ["langgraph-dag", "langgraph", "crewai", "autogen", "llamaindex", "webcontainer", "omega-cognition", "custom", "generic"] as const;
+describe("defaultCapabilitiesFor \u2014 covers every RuntimeKind including cognitive runtimes", () => {
+  const kinds = [
+    "langgraph-dag", "langgraph", "crewai", "autogen", "llamaindex",
+    "webcontainer", "omega-cognition", "morpheus-pantheon",
+    "prometheus", "morpheus-creative", "apollo", "hermes", "athena",
+    "vulcan", "oracle", "nexus-prime", "stigmergy-nexus",
+    "ephemeral-genesis", "supreme-coordinator", "custom", "generic",
+  ] as const;
   for (const k of kinds) {
     it(`returns sane capabilities for ${k}`, () => {
       const caps = defaultCapabilitiesFor(k);

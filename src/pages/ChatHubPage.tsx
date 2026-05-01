@@ -2,12 +2,16 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   MessageCircle,
+  Mic,
+  MicOff,
   Plus,
+  Radio,
   RotateCcw,
   Search,
   Send,
   Square,
   Trash2,
+  Volume2,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChatBubble } from "@/components/ChatBubble";
@@ -17,21 +21,61 @@ import {
   getRuntimeProviderSpec,
   useConfig,
 } from "@/stores/config";
+import type { ChatMessageV2 } from "@/types";
 import {
   getModelOptions,
   getProviderOptions,
   providerIsUsable,
   resolveModelId,
   resolveProviderId,
+  resolveRuntimeId,
 } from "@/services/configSelectors";
 import { api } from "@/services/api";
+import { createAdapter } from "@/services/adapters";
 import { cn } from "@/utils/cn";
+import { memoryEngine } from "@/core/ai/memory/MemoryEngine";
+import { useSmartScroll } from "@/shared/hooks/useSmartScroll";
+import { throttle } from "@/utils/throttle";
+import { presetById } from "@/services/providers";
+import type { ProviderAudioMode } from "@/types";
 
 type ChatThreadDraft = Parameters<
   ReturnType<typeof useConfig.getState>["addChatThread"]
 >[0];
 
 const DIRECT_RUNTIME = "direct-chat";
+const DEFAULT_CHAT_AUDIO_MODES: ProviderAudioMode[] = ["tts", "stt", "realtime"];
+
+type SpeechRecognitionAlternativeLike = { transcript?: string };
+type SpeechRecognitionResultLike = {
+  isFinal?: boolean;
+  [index: number]: SpeechRecognitionAlternativeLike;
+};
+type SpeechRecognitionEventLike = {
+  resultIndex?: number;
+  results?: ArrayLike<SpeechRecognitionResultLike>;
+};
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const voiceWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
+}
 
 function newChatThread(title = "Novo chat"): ChatThreadDraft {
   return {
@@ -90,11 +134,17 @@ export function ChatHubPage() {
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [query, setQuery] = useState("");
+  const [queryDraft, setQueryDraft] = useState("");
+  const query = useDebouncedValue(queryDraft, 80);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [virtualScrollTop, setVirtualScrollTop] = useState(0);
+  const [virtualViewportHeight, setVirtualViewportHeight] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const { containerRef: scrollerRef, scrollToBottom, forceScrollToBottom } =
+    useSmartScroll<HTMLDivElement>({ threshold: 120, behavior: "smooth" });
+  const previousMessageCountRef = useRef(0);
+  const previousStreamingRef = useRef(false);
 
   useEffect(() => {
     ensurePresetsRegistered();
@@ -136,7 +186,17 @@ export function ChatHubPage() {
     providers,
     models,
   );
-  const runtimeValue = selection.runtimeId ?? DIRECT_RUNTIME;
+  const explicitDirect = selection.runtimeId === DIRECT_RUNTIME;
+  const resolvedRuntimeId = explicitDirect
+    ? undefined
+    : resolveRuntimeId(
+        selection.runtimeId,
+        settings.defaultRuntimeId,
+        runtimes,
+      );
+  const runtimeValue = explicitDirect
+    ? DIRECT_RUNTIME
+    : (resolvedRuntimeId ?? DIRECT_RUNTIME);
   const providerOptions = useMemo(
     () => getProviderOptions(providers, true),
     [providers],
@@ -144,6 +204,47 @@ export function ChatHubPage() {
   const modelOptions = useMemo(
     () => getModelOptions(providerId, providers, models),
     [modelId, models, providerId, providers],
+  );
+  const selectedProvider = providerId ? providers[providerId] : undefined;
+  const selectedProviderPreset = selectedProvider
+    ? presetById(selectedProvider.presetId)
+    : undefined;
+  const voiceEnabled = Boolean(selection.voiceEnabled);
+  const voiceMode =
+    selection.voiceMode ??
+    selectedProviderPreset?.audioModes?.[0] ??
+    DEFAULT_CHAT_AUDIO_MODES[0];
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceLoopRef = useRef(false);
+  const voiceOptions = useMemo(() => {
+    const presetVoices = selectedProviderPreset?.presetVoices ?? [];
+    const browserVoiceNames = browserVoices.map((voice) => voice.name);
+    return Array.from(new Set([...presetVoices, ...browserVoiceNames])).filter(Boolean);
+  }, [browserVoices, selectedProviderPreset]);
+  const voiceModeOptions = useMemo(
+    () =>
+      (selectedProviderPreset?.audioModes?.length
+        ? selectedProviderPreset.audioModes
+        : DEFAULT_CHAT_AUDIO_MODES
+      ).map((mode) => ({
+        value: mode,
+        label: mode.toUpperCase(),
+      })),
+    [selectedProviderPreset],
+  );
+  const voiceNameOptions = useMemo(
+    () =>
+      (voiceOptions.length ? voiceOptions : ["default"]).map((voice) => ({
+        value: voice,
+        label: voice,
+      })),
+    [voiceOptions],
+  );
+  const canUseSpeechRecognition = useMemo(
+    () => Boolean(getSpeechRecognitionCtor()),
+    [],
   );
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -164,10 +265,73 @@ export function ChatHubPage() {
   }, [query, threads]);
 
   useEffect(() => {
-    if (typeof scrollerRef.current?.scrollTo === "function") {
-      scrollerRef.current.scrollTo({ top: 1e9, behavior: "smooth" });
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    const syncVoices = () => setBrowserVoices(synth.getVoices());
+    syncVoices();
+    synth.onvoiceschanged = syncVoices;
+    return () => {
+      synth.onvoiceschanged = null;
+    };
+  }, []);
+
+  const activeMessages = activeThread?.messages ?? [];
+  const shouldVirtualizeMessages = activeMessages.length > 40;
+  const virtualizedMessages = useMemo(
+    () =>
+      getVirtualMessageWindow({
+        messages: activeMessages,
+        scrollTop: virtualScrollTop,
+        viewportHeight: virtualViewportHeight,
+        enabled: shouldVirtualizeMessages,
+      }),
+    [
+      activeMessages,
+      shouldVirtualizeMessages,
+      virtualScrollTop,
+      virtualViewportHeight,
+    ],
+  );
+
+  useEffect(() => {
+    const count = activeMessages.length;
+    if (count > previousMessageCountRef.current) {
+      scrollToBottom();
     }
-  }, [activeThread?.messages.length]);
+    previousMessageCountRef.current = count;
+  }, [activeMessages.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (streaming && !previousStreamingRef.current) {
+      forceScrollToBottom();
+    }
+    previousStreamingRef.current = streaming;
+  }, [streaming, forceScrollToBottom]);
+
+  useEffect(() => {
+    const node = scrollerRef.current;
+    if (!node) return;
+
+    const updateMetrics = () => {
+      setVirtualScrollTop(node.scrollTop);
+      setVirtualViewportHeight(node.clientHeight);
+    };
+
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateMetrics);
+    };
+
+    updateMetrics();
+    node.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      cancelAnimationFrame(frame);
+      node.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [activeThread?.id, scrollerRef]);
 
   function createThread() {
     const thread = newChatThread();
@@ -182,9 +346,104 @@ export function ChatHubPage() {
     setStreaming(false);
   }
 
+  function stopVoiceCapture() {
+    voiceLoopRef.current = false;
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    setVoiceListening(false);
+  }
+
+  function speakAssistantText(text: string, restartRealtimeLoop: boolean) {
+    if (!voiceEnabled || voiceMode === "stt") return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    const clean = text.trim();
+    if (!clean) return;
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(clean);
+    const selectedVoice = browserVoices.find(
+      (voice) => voice.name === selection.voiceName,
+    );
+    if (selectedVoice) utterance.voice = selectedVoice;
+    utterance.lang = settings.language === "en-US" ? "en-US" : "pt-BR";
+    utterance.rate = 1;
+    utterance.onend = () => {
+      if (restartRealtimeLoop && voiceEnabled && voiceMode === "realtime") {
+        window.setTimeout(() => {
+          void startVoiceCapture(true);
+        }, 180);
+      }
+    };
+    synth.speak(utterance);
+  }
+
+  async function startVoiceCapture(autoSend: boolean) {
+    const RecognitionCtor = getSpeechRecognitionCtor();
+    if (!RecognitionCtor) {
+      toast.error("Reconhecimento de voz do navegador não está disponível aqui.");
+      return;
+    }
+    if (voiceListening) return;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    const recognition = new RecognitionCtor();
+    recognition.lang = settings.language === "en-US" ? "en-US" : "pt-BR";
+    recognition.continuous = autoSend;
+    recognition.interimResults = autoSend;
+    voiceLoopRef.current = autoSend;
+    recognition.onresult = (event) => {
+      const results = event.results;
+      if (!results) return;
+      const fragments: string[] = [];
+      for (let index = event.resultIndex ?? 0; index < results.length; index += 1) {
+        const result = results[index];
+        const transcript = result?.[0]?.transcript?.trim();
+        if (!transcript) continue;
+        if (result.isFinal) {
+          fragments.push(transcript);
+        }
+      }
+      const transcript = fragments.join(" ").trim();
+      if (!transcript) return;
+      if (autoSend) {
+        voiceLoopRef.current = false;
+        recognition.stop();
+        recognitionRef.current = null;
+        setVoiceListening(false);
+        void sendText(transcript);
+        return;
+      }
+      setInput((current) => (current ? `${current.trim()} ${transcript}` : transcript));
+      recognition.stop();
+    };
+    recognition.onerror = (event) => {
+      if (event.error && event.error !== "aborted" && event.error !== "no-speech") {
+        toast.error(`Voz: ${event.error}`);
+      }
+    };
+    recognition.onend = () => {
+      setVoiceListening(false);
+      recognitionRef.current = null;
+      if (autoSend && voiceLoopRef.current && !streaming) {
+        window.setTimeout(() => {
+          void startVoiceCapture(true);
+        }, 220);
+      }
+    };
+    recognitionRef.current = recognition;
+    setVoiceListening(true);
+    recognition.start();
+  }
+
   function openThread(threadId: string) {
     setActiveThread(threadId);
     navigate(`/chat/${threadId}`);
+  }
+
+  function startRenameThread(threadId: string, title: string) {
+    setEditingId(threadId);
+    setEditingTitle(title);
   }
 
   function confirmDeleteThread(threadId: string) {
@@ -205,11 +464,18 @@ export function ChatHubPage() {
   async function sendText(text: string) {
     const clean = text.trim();
     if (!clean || streaming) return;
+    const shouldResumeRealtimeVoice = voiceEnabled && voiceMode === "realtime";
+    if (shouldResumeRealtimeVoice) {
+      stopVoiceCapture();
+    }
     const thread = activeThread ?? newChatThread(clean.slice(0, 48));
     if (!activeThread) {
       addThread(thread);
       navigate(`/chat/${thread.id}`);
     }
+
+    const effectiveRuntimeId =
+      runtimeValue === DIRECT_RUNTIME ? undefined : runtimeValue;
 
     const createdAt = Date.now();
     appendMessage(thread.id, {
@@ -219,9 +485,10 @@ export function ChatHubPage() {
       createdAt,
       providerId,
       modelId,
-      runtimeId: runtimeValue === DIRECT_RUNTIME ? undefined : runtimeValue,
+      runtimeId: effectiveRuntimeId,
     });
     setInput("");
+    forceScrollToBottom();
 
     const provider = providerId ? providers[providerId] : undefined;
     if (isSimpleGreeting(clean) || !providerIsUsable(provider) || !modelId) {
@@ -250,9 +517,12 @@ export function ChatHubPage() {
       createdAt: Date.now(),
       providerId: provider.id,
       modelId,
+      runtimeId: effectiveRuntimeId,
       streaming: true,
     });
     setStreaming(true);
+
+    await memoryEngine.initialize(thread.id);
 
     const history = [
       ...thread.messages,
@@ -263,45 +533,119 @@ export function ChatHubPage() {
         createdAt,
       },
     ].filter((msg) => msg.role !== "system");
+    const memoryAugmentedHistory = await memoryEngine.buildContextWithMemory(
+      clean,
+      history.map((msg) => ({ role: msg.role, content: msg.content })),
+    );
     let acc = "";
+    const flushAssistant = throttle((content: string) => {
+      patchMessage(thread.id, assistantId, { content });
+      scrollToBottom();
+    }, 80);
     let settled = false;
+    const runtime = effectiveRuntimeId
+      ? runtimes.find((item) => item.id === effectiveRuntimeId)
+      : undefined;
+    const adapter = runtime ? createAdapter(runtime) : undefined;
+    const abortController = new AbortController();
+    const runtimeHistory = memoryAugmentedHistory.map((msg, idx) => ({
+      id: `mem-${idx}`,
+      role: msg.role,
+      content: msg.content,
+      createdAt,
+    }));
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const stopStream = api.streamChat({
-          spec,
-          model: modelId,
-          messages: history.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-          temperature: 0.7,
-          onToken: (delta) => {
-            acc += delta;
-            patchMessage(thread.id, assistantId, { content: acc });
-          },
-          onDone: () => {
-            if (!settled) {
-              settled = true;
-              resolve();
-            }
-          },
-          onError: (err) => {
-            if (!settled) {
-              settled = true;
-              reject(new Error(err));
-            }
-          },
-        });
-        stopRef.current = () => {
-          stopStream();
+        const finish = () => {
           if (!settled) {
             settled = true;
             resolve();
           }
         };
+        const fail = (message: string) => {
+          if (!settled) {
+            settled = true;
+            reject(new Error(message));
+          }
+        };
+
+        const stopStream = adapter
+          ? (() => {
+              void adapter
+                .chat(
+                  runtimeHistory,
+                  {
+                    spec,
+                    model: modelId,
+                    signal: abortController.signal,
+                  },
+                  (chunk) => {
+                    if (chunk.event === "token") {
+                      const delta =
+                        chunk.data && typeof chunk.data === "object"
+                          ? (chunk.data as { delta?: string }).delta
+                          : undefined;
+                      if (delta) {
+                        acc += delta;
+                        flushAssistant(acc);
+                      }
+                      return;
+                    }
+                    if (chunk.event === "error") {
+                      const message =
+                        chunk.data && typeof chunk.data === "object"
+                          ? ((chunk.data as { message?: string }).message ??
+                            "runtime error")
+                          : "runtime error";
+                      fail(message);
+                      return;
+                    }
+                    if (chunk.event === "done") finish();
+                  },
+                )
+                .catch((err: Error) => fail(err.message));
+              return () => abortController.abort();
+            })()
+          : api.streamChat({
+              spec,
+              model: modelId,
+              messages: memoryAugmentedHistory.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+              })),
+              temperature: 0.7,
+              onToken: (delta) => {
+                acc += delta;
+                flushAssistant(acc);
+              },
+              onDone: finish,
+              onError: fail,
+            });
+
+        stopRef.current = () => {
+          abortController.abort();
+          stopStream();
+          finish();
+        };
       });
-      patchMessage(thread.id, assistantId, { streaming: false });
+      patchMessage(thread.id, assistantId, { content: acc, streaming: false });
+      scrollToBottom();
+      await memoryEngine.remember({
+        agentId: thread.id,
+        content: clean,
+        type: "user_message",
+        importance: 0.55,
+        tags: ["chat", "user"],
+      });
+      await memoryEngine.remember({
+        agentId: thread.id,
+        content: acc,
+        type: "assistant_message",
+        importance: 0.6,
+        tags: ["chat", "assistant"],
+      });
+      speakAssistantText(acc, shouldResumeRealtimeVoice);
     } catch (err) {
       const message = (err as Error).message;
       patchMessage(thread.id, assistantId, {
@@ -329,9 +673,8 @@ export function ChatHubPage() {
   }
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-1 overflow-hidden rounded-[22px] bg-white/20 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
+    <section className="grid h-full min-h-0 grid-cols-1 overflow-hidden rounded-[22px] bg-white/20 lg:gap-3 lg:grid-cols-[minmax(0,1fr)_280px] xl:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="chat-surface relative flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] lg:rounded-[36px]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_55%,rgba(139,163,255,0.32),transparent_28%),radial-gradient(circle_at_36%_12%,rgba(255,255,255,0.82),transparent_34%)]" />
         <div className="relative px-4 pt-5 sm:px-6 lg:px-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -342,7 +685,81 @@ export function ChatHubPage() {
                 Conversa agêntica
               </h1>
             </div>
-            <div className="grid w-full gap-2 md:w-auto md:min-w-[560px] md:grid-cols-3">
+            <div className="grid w-full grid-cols-2 gap-2 md:hidden">
+              <LabeledSelect
+                label="Provider"
+                value={providerId ?? ""}
+                onChange={(value) => {
+                  const nextModel = getModelOptions(value, providers, models)[0]
+                    ?.id;
+                  setSelection({ providerId: value, model: nextModel });
+                }}
+                options={providerOptions.map((provider) => ({
+                  value: provider.id,
+                  label: `${provider.name}${providerIsUsable(provider) ? "" : " (disabled)"}`,
+                }))}
+                emptyLabel="Configure providers"
+                className="min-w-0 px-2.5 py-2"
+              />
+              <LabeledSelect
+                label="Model"
+                value={modelId ?? ""}
+                onChange={(value) => setSelection({ model: value })}
+                options={modelOptions.map((model) => ({
+                  value: model.id,
+                  label: model.label,
+                }))}
+                emptyLabel="No enabled models"
+                className="min-w-0 px-2.5 py-2"
+              />
+              <LabeledSelect
+                label="Runtime"
+                value={runtimeValue}
+                onChange={(value) =>
+                  setSelection({
+                    runtimeId: value,
+                  })
+                }
+                options={[
+                  { value: DIRECT_RUNTIME, label: "Direct Provider" },
+                  ...runtimes.map((runtime) => ({
+                    value: runtime.id,
+                    label: `${runtime.isDefault ? "* " : ""}${runtime.name}`,
+                  })),
+                ]}
+                emptyLabel="Direct Provider"
+                className="min-w-0 px-2.5 py-2"
+              />
+              <MobileVoiceControl
+                voiceEnabled={voiceEnabled}
+                voiceMode={voiceMode}
+                voiceModeOptions={voiceModeOptions}
+                voiceName={selection.voiceName ?? voiceNameOptions[0]?.value ?? "default"}
+                voiceNameOptions={voiceNameOptions}
+                voiceListening={voiceListening}
+                canUseSpeechRecognition={canUseSpeechRecognition}
+                onToggle={() => {
+                  const next = !voiceEnabled;
+                  setSelection({
+                    voiceEnabled: next,
+                    voiceMode: next ? voiceMode : undefined,
+                  });
+                  if (!next) stopVoiceCapture();
+                }}
+                onModeChange={(value) =>
+                  setSelection({ voiceMode: value as ProviderAudioMode })
+                }
+                onVoiceChange={(value) => setSelection({ voiceName: value })}
+                onMicClick={() => {
+                  if (voiceListening) {
+                    stopVoiceCapture();
+                    return;
+                  }
+                  void startVoiceCapture(voiceMode === "realtime");
+                }}
+              />
+            </div>
+            <div className="hidden w-full gap-2 md:grid md:min-w-[560px] md:grid-cols-3">
               <LabeledSelect
                 label="Provider"
                 value={providerId ?? ""}
@@ -372,7 +789,7 @@ export function ChatHubPage() {
                 value={runtimeValue}
                 onChange={(value) =>
                   setSelection({
-                    runtimeId: value === DIRECT_RUNTIME ? undefined : value,
+                    runtimeId: value,
                   })
                 }
                 options={[
@@ -384,6 +801,70 @@ export function ChatHubPage() {
                 ]}
                 emptyLabel="Direct Provider"
               />
+            </div>
+            <div className="hidden w-full flex-wrap items-center gap-2 rounded-2xl border border-white/70 bg-white/70 px-3 py-2 text-[11px] font-semibold text-slate-600 md:flex md:min-w-[560px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !voiceEnabled;
+                  setSelection({
+                    voiceEnabled: next,
+                    voiceMode: next ? voiceMode : undefined,
+                  });
+                  if (!next) stopVoiceCapture();
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold transition",
+                  voiceEnabled
+                    ? "bg-[#17172d] text-white"
+                    : "bg-white text-slate-700",
+                )}
+              >
+                <Volume2 className="h-3.5 w-3.5" />Voice
+              </button>
+              {voiceEnabled ? (
+                <>
+                  <InlineSelect
+                    label="Mode"
+                    value={voiceMode}
+                    onChange={(value) =>
+                      setSelection({ voiceMode: value as ProviderAudioMode })
+                    }
+                    options={voiceModeOptions}
+                  />
+                  <InlineSelect
+                    label="Voice"
+                    value={selection.voiceName ?? voiceNameOptions[0]?.value ?? "default"}
+                    onChange={(value) => setSelection({ voiceName: value })}
+                    options={voiceNameOptions}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (voiceListening) {
+                        stopVoiceCapture();
+                        return;
+                      }
+                      void startVoiceCapture(voiceMode === "realtime");
+                    }}
+                    disabled={!canUseSpeechRecognition}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50",
+                      voiceListening
+                        ? "bg-rose-100 text-rose-700"
+                        : "bg-white text-slate-700",
+                    )}
+                  >
+                    {voiceListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                    {voiceMode === "realtime" ? "Realtime" : "Mic"}
+                  </button>
+                  {voiceMode === "realtime" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700">
+                      <Radio className="h-3.5 w-3.5" />Loop de voz
+                    </span>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -405,9 +886,27 @@ export function ChatHubPage() {
               </div>
             </div>
           ) : (
-            activeThread.messages.map((message, index) => (
-              <ChatBubble key={message.id} message={message} index={index} />
-            ))
+            <>
+              {virtualizedMessages.topSpacer > 0 ? (
+                <div
+                  aria-hidden="true"
+                  style={{ height: virtualizedMessages.topSpacer }}
+                />
+              ) : null}
+              {virtualizedMessages.messages.map((message, index) => (
+                <ChatBubble
+                  key={message.id}
+                  message={message}
+                  index={virtualizedMessages.startIndex + index}
+                />
+              ))}
+              {virtualizedMessages.bottomSpacer > 0 ? (
+                <div
+                  aria-hidden="true"
+                  style={{ height: virtualizedMessages.bottomSpacer }}
+                />
+              ) : null}
+            </>
           )}
         </div>
 
@@ -477,7 +976,7 @@ export function ChatHubPage() {
         </div>
       </div>
 
-      <aside className="hidden min-h-0 flex-col border-l border-white/40 bg-[#f2f4ff]/60 px-4 py-5 backdrop-blur-2xl lg:flex">
+      <aside className="chat-surface hidden min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white/18 px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-2xl dark:border-white/10 lg:flex lg:rounded-[36px]">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
@@ -494,13 +993,13 @@ export function ChatHubPage() {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <label className="mb-3 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/55 px-3 py-2 text-xs font-semibold text-slate-500">
+        <label className="mb-3 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/55 px-3 py-2 text-xs font-semibold text-slate-500 dark:border-white/10 dark:bg-slate-900/78 dark:text-slate-400">
           <Search className="h-3.5 w-3.5" />
           <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={queryDraft}
+            onChange={(event) => setQueryDraft(event.target.value)}
             placeholder="Buscar conversas"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
           />
         </label>
         <div className="app-scrollbar flex-1 space-y-4 overflow-y-auto">
@@ -516,17 +1015,14 @@ export function ChatHubPage() {
                     className={cn(
                       "group rounded-2xl border p-3 transition",
                       thread.id === activeThread?.id
-                        ? "border-slate-900/20 bg-white text-slate-950 shadow"
-                        : "border-white/70 bg-white/45 text-slate-600 hover:bg-white/70",
+                        ? "border-slate-900/20 bg-white text-slate-950 shadow dark:border-white/12 dark:bg-slate-900 dark:text-slate-100 dark:shadow-none"
+                        : "border-white/70 bg-white/45 text-slate-600 hover:bg-white/70 dark:border-white/10 dark:bg-slate-900/72 dark:text-slate-300 dark:hover:bg-slate-900",
                     )}
                   >
                     <button
                       type="button"
                       onClick={() => openThread(thread.id)}
-                      onDoubleClick={() => {
-                        setEditingId(thread.id);
-                        setEditingTitle(thread.title);
-                      }}
+                      onDoubleClick={() => startRenameThread(thread.id, thread.title)}
                       className="w-full text-left"
                     >
                       {editingId === thread.id ? (
@@ -552,21 +1048,30 @@ export function ChatHubPage() {
                         {thread.messages.length} messages
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => confirmDeleteThread(thread.id)}
-                      className="mt-2 hidden items-center gap-1 text-[11px] font-bold text-rose-500 group-hover:inline-flex"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Excluir
-                    </button>
+                    <div className="mt-2 flex items-center gap-3 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => startRenameThread(thread.id, thread.title)}
+                        className="text-slate-400 transition hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
+                      >
+                        Renomear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmDeleteThread(thread.id)}
+                        className="inline-flex items-center gap-1 text-rose-500 transition hover:text-rose-400"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Excluir
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
           {threads.length > 0 && Object.keys(filteredGroups).length === 0 ? (
-            <p className="rounded-2xl bg-white/45 p-4 text-center text-xs font-semibold text-slate-500">
+            <p className="rounded-2xl bg-white/45 p-4 text-center text-xs font-semibold text-slate-500 dark:bg-slate-900/72 dark:text-slate-400">
               Nenhuma conversa encontrada.
             </p>
           ) : null}
@@ -576,21 +1081,165 @@ export function ChatHubPage() {
   );
 }
 
+function InlineSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700">
+      <span className="uppercase tracking-[0.16em] text-slate-400">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="bg-transparent text-[11px] font-bold text-slate-700 outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function MobileVoiceControl({
+  voiceEnabled,
+  voiceMode,
+  voiceModeOptions,
+  voiceName,
+  voiceNameOptions,
+  voiceListening,
+  canUseSpeechRecognition,
+  onToggle,
+  onModeChange,
+  onVoiceChange,
+  onMicClick,
+}: {
+  voiceEnabled: boolean;
+  voiceMode: ProviderAudioMode;
+  voiceModeOptions: Array<{ value: string; label: string }>;
+  voiceName: string;
+  voiceNameOptions: Array<{ value: string; label: string }>;
+  voiceListening: boolean;
+  canUseSpeechRecognition: boolean;
+  onToggle: () => void;
+  onModeChange: (value: string) => void;
+  onVoiceChange: (value: string) => void;
+  onMicClick: () => void;
+}) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-white/70 bg-white/75 px-2.5 py-2 shadow-inner">
+      <div className="flex items-center justify-between gap-2">
+        <span className="block min-w-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+          Voice
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold transition",
+            voiceEnabled ? "bg-[#17172d] text-white" : "bg-white text-slate-700",
+          )}
+        >
+          <Volume2 className="h-3 w-3" />
+          {voiceEnabled ? "On" : "Off"}
+        </button>
+      </div>
+      {voiceEnabled ? (
+        <div className="mt-2 space-y-2">
+          <CompactMobileSelect
+            label="Mode"
+            value={voiceMode}
+            onChange={onModeChange}
+            options={voiceModeOptions}
+          />
+          <CompactMobileSelect
+            label="Voice"
+            value={voiceName}
+            onChange={onVoiceChange}
+            options={voiceNameOptions}
+          />
+          <button
+            type="button"
+            onClick={onMicClick}
+            disabled={!canUseSpeechRecognition}
+            className={cn(
+              "inline-flex w-full items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-[10px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50",
+              voiceListening
+                ? "bg-rose-100 text-rose-700"
+                : "bg-white text-slate-700",
+            )}
+          >
+            {voiceListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+            {voiceMode === "realtime" ? "Realtime" : "Mic"}
+            {voiceMode === "realtime" ? <Radio className="h-3 w-3" /> : null}
+          </button>
+        </div>
+      ) : (
+        <p className="mt-2 text-[10px] font-semibold text-slate-400">
+          Voice off
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CompactMobileSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block rounded-xl border border-white/70 bg-white/80 px-2 py-1.5">
+      <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full bg-transparent text-[10px] font-bold text-slate-800 outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function LabeledSelect({
   label,
   value,
   onChange,
   options,
   emptyLabel,
+  className,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
   emptyLabel: string;
+  className?: string;
 }) {
   return (
-    <label className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2 shadow-inner">
+    <label className={cn("rounded-2xl border border-white/70 bg-white/75 px-3 py-2 shadow-inner", className)}>
       <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
         {label}
       </span>
@@ -609,4 +1258,81 @@ function LabeledSelect({
       </select>
     </label>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(handle);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
+function estimateMessageHeight(message: ChatMessageV2) {
+  const base = message.role === "assistant" ? 136 : 92;
+  const contentWeight = Math.min(320, Math.ceil(message.content.length / 220) * 28);
+  const attachmentWeight = (message.attachments?.length ?? 0) * 44;
+  const generatedWeight = (message.generatedFiles?.length ?? 0) * 52;
+  return base + contentWeight + attachmentWeight + generatedWeight;
+}
+
+function getVirtualMessageWindow({
+  messages,
+  scrollTop,
+  viewportHeight,
+  enabled,
+}: {
+  messages: ChatMessageV2[];
+  scrollTop: number;
+  viewportHeight: number;
+  enabled: boolean;
+}) {
+  if (!enabled) {
+    return {
+      startIndex: 0,
+      endIndex: messages.length,
+      messages,
+      topSpacer: 0,
+      bottomSpacer: 0,
+    };
+  }
+
+  const overscan = 5;
+  const heights = messages.map(estimateMessageHeight);
+  const prefix = new Array<number>(heights.length + 1).fill(0);
+  for (let index = 0; index < heights.length; index += 1) {
+    prefix[index + 1] = prefix[index] + heights[index];
+  }
+
+  const start = findMessageIndex(prefix, scrollTop);
+  const end = findMessageIndex(prefix, scrollTop + viewportHeight + 240);
+  const startIndex = Math.max(0, start - overscan);
+  const endIndex = Math.min(messages.length, end + overscan + 1);
+
+  return {
+    startIndex,
+    endIndex,
+    messages: messages.slice(startIndex, endIndex),
+    topSpacer: prefix[startIndex],
+    bottomSpacer: prefix[messages.length] - prefix[endIndex],
+  };
+}
+
+function findMessageIndex(prefix: number[], offset: number) {
+  let low = 0;
+  let high = prefix.length - 2;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (prefix[mid + 1] < offset) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return Math.max(0, Math.min(prefix.length - 2, low));
 }

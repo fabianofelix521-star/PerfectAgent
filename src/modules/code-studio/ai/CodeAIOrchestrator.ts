@@ -14,6 +14,7 @@ import { errorAnalyzer } from "./ErrorAnalyzer";
 import { fileSystemManager } from "../engine/FileSystemManager";
 import { hotReloadManager } from "../engine/HotReloadManager";
 import { buildPipeline } from "../engine/BuildPipeline";
+import { throttle } from "@/utils/throttle";
 import type {
   AIMessage,
   GeneratedFile,
@@ -39,6 +40,15 @@ export class CodeAIOrchestrator {
   private isGenerating = false;
   private currentState: GenerationState;
   private abortController: AbortController | null = null;
+  private throttledStateUpdate = throttle(
+    (
+      state: Partial<GenerationState>,
+      options?: OrchestratorOptions,
+    ): void => {
+      this.setState(state, options);
+    },
+    100,
+  );
 
   constructor() {
     this.currentState = this.initialState();
@@ -56,6 +66,7 @@ export class CodeAIOrchestrator {
     this.isGenerating = true;
     this.abortController = new AbortController();
     this.currentState = this.initialState();
+    const parser = new StreamParser();
 
     try {
       this.setState({ status: "thinking" }, options);
@@ -69,11 +80,10 @@ export class CodeAIOrchestrator {
       const collectedCommands: string[] = [];
       let summary = "";
 
-      const parser = new StreamParser();
       parser.onChunk((chunk) => {
         switch (chunk.type) {
           case "thinking":
-            this.setState(
+            this.throttledStateUpdate(
               {
                 status: "planning",
                 thinking: String(chunk.data ?? ""),
@@ -88,7 +98,7 @@ export class CodeAIOrchestrator {
               description: data?.description ?? "",
               status: "pending",
             };
-            this.setState(
+            this.throttledStateUpdate(
               {
                 status: "planning",
                 plan: [...this.currentState.plan, step],
@@ -187,6 +197,7 @@ export class CodeAIOrchestrator {
       this.setState({ status: "error", error: error.message }, options);
       options.onError?.(error);
     } finally {
+      parser.destroy();
       this.isGenerating = false;
       this.abortController = null;
     }

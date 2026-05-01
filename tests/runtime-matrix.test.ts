@@ -25,7 +25,10 @@ import type { AgentRuntime, RuntimeKind } from "@/types";
 
 const ALL_KINDS: RuntimeKind[] = [
   "langgraph-dag", "langgraph", "crewai", "autogen", "llamaindex",
-  "webcontainer", "omega-cognition", "custom", "generic",
+  "webcontainer", "omega-cognition", "morpheus-pantheon",
+  "prometheus", "morpheus-creative", "apollo", "hermes", "athena",
+  "vulcan", "oracle", "nexus-prime", "stigmergy-nexus",
+  "ephemeral-genesis", "supreme-coordinator", "custom", "generic",
 ];
 
 function makeRuntime(kind: RuntimeKind): AgentRuntime {

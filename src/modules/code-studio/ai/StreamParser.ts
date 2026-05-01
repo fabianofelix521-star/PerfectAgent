@@ -28,7 +28,42 @@ type ChunkListener = (chunk: ParsedChunk) => void;
 type CompleteListener = (response: AICodeResponse) => void;
 type ErrorListener = (error: Error) => void;
 
+interface WorkerSnapshot {
+  thinking: string | null;
+  parsedFilesCount: number;
+  emittedPlanSteps: number;
+  emittedSummary: string | null;
+  emittedCommandsCount: number;
+}
+
+type WorkerChunkPayload = {
+  type: "CHUNK";
+  data: ParsedChunk;
+};
+
+type WorkerBufferPayload = {
+  type: "BUFFER_UPDATE";
+  data: { buffer: string; snapshot?: WorkerSnapshot };
+};
+
+type WorkerCompletePayload = {
+  type: "COMPLETE";
+  data: { parsed: AICodeResponse; snapshot?: WorkerSnapshot };
+};
+
+type WorkerErrorPayload = {
+  type: "ERROR";
+  data: { message?: string };
+};
+
+type StreamWorkerPayload =
+  | WorkerChunkPayload
+  | WorkerBufferPayload
+  | WorkerCompletePayload
+  | WorkerErrorPayload;
+
 export class StreamParser {
+  private worker: Worker | null = null;
   private buffer = "";
   private readonly chunkListeners: ChunkListener[] = [];
   private readonly completeListeners: CompleteListener[] = [];
@@ -42,8 +77,84 @@ export class StreamParser {
   private emittedSummary: string | null = null;
   private emittedCommandsCount = 0;
 
+  constructor() {
+    this.initWorker();
+  }
+
+  private initWorker(): void {
+    try {
+      this.worker = new Worker(
+        new URL("../workers/streamProcessor.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+
+      this.worker.onmessage = (event: MessageEvent<StreamWorkerPayload>) => {
+        const payload = event.data;
+        switch (payload.type) {
+          case "CHUNK":
+            this.emit(payload.data);
+            break;
+          case "BUFFER_UPDATE":
+            this.buffer = payload.data.buffer;
+            if (payload.data.snapshot) this.syncSnapshot(payload.data.snapshot);
+            break;
+          case "COMPLETE":
+            if (payload.data.snapshot) this.syncSnapshot(payload.data.snapshot);
+            for (const l of this.completeListeners) {
+              try {
+                l(payload.data.parsed);
+              } catch {
+                /* noop */
+              }
+            }
+            break;
+          case "ERROR": {
+            const err = new Error(
+              payload.data.message ?? "Failed to parse stream in worker.",
+            );
+            for (const l of this.errorListeners) {
+              try {
+                l(err);
+              } catch {
+                /* noop */
+              }
+            }
+            break;
+          }
+        }
+      };
+
+      this.worker.onerror = () => {
+        this.worker = null;
+      };
+    } catch {
+      this.worker = null;
+    }
+  }
+
+  private syncSnapshot(snapshot: WorkerSnapshot): void {
+    this.emittedThinking = snapshot.thinking;
+    this.parsedFilesCount = snapshot.parsedFilesCount;
+    this.emittedPlanSteps = snapshot.emittedPlanSteps;
+    this.emittedSummary = snapshot.emittedSummary;
+    this.emittedCommandsCount = snapshot.emittedCommandsCount;
+  }
+
   processChunk(chunk: string): void {
     if (!chunk) return;
+
+    if (this.worker) {
+      this.worker.postMessage({
+        type: "PROCESS_CHUNK",
+        data: { chunk, buffer: this.buffer },
+      });
+      return;
+    }
+
+    this.processChunkMainThread(chunk);
+  }
+
+  private processChunkMainThread(chunk: string): void {
     this.buffer += chunk;
     this.tryExtractThinking();
     this.tryExtractPlanSteps();
@@ -53,6 +164,14 @@ export class StreamParser {
   }
 
   finalize(): void {
+    if (this.worker) {
+      this.worker.postMessage({
+        type: "FINALIZE",
+        data: { buffer: this.buffer },
+      });
+      return;
+    }
+
     const parsed = this.parseComplete();
     if (parsed) {
       // Backfill anything we missed during streaming.
@@ -93,6 +212,10 @@ export class StreamParser {
   reset(): void {
     this.buffer = "";
 
+    if (this.worker) {
+      this.worker.postMessage({ type: "RESET" });
+    }
+
     this.parsedFilesCount = 0;
     this.nextFileSearchFrom = 0;
     this.emittedThinking = null;
@@ -123,6 +246,11 @@ export class StreamParser {
       const idx = this.errorListeners.indexOf(listener);
       if (idx >= 0) this.errorListeners.splice(idx, 1);
     };
+  }
+
+  destroy(): void {
+    this.worker?.terminate();
+    this.worker = null;
   }
 
   // -----------------------------------------------------------------------

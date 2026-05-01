@@ -17,6 +17,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { api } from "@/services/api";
+import { resolveRuntimeLlmConfig } from "@/services/configSelectors";
 import { getRuntimeProviderSpec, useConfig } from "@/stores/config";
 import { toast } from "@/components/Toast";
 
@@ -28,6 +29,9 @@ export function WorkflowPage() {
   const runtimes = useConfig((s) => s.runtimes);
   const upsertRuntime = useConfig((s) => s.upsertRuntime);
   const providers = useConfig((s) => s.providers);
+  const models = useConfig((s) => s.models);
+  const settings = useConfig((s) => s.settings);
+  const studioSelection = useConfig((s) => s.studioSelection);
   const [runtimeId, setRuntimeId] = useState(runtimes[0]?.id ?? "");
   const [input, setInput] = useState('{"question":"Explique este workflow."}');
   const [running, setRunning] = useState(false);
@@ -75,14 +79,20 @@ export function WorkflowPage() {
       toast.error("Input JSON inválido.");
       return;
     }
-    const llmSpec = workflowRuntime.llmProviderId
-      ? getRuntimeProviderSpec(workflowRuntime.llmProviderId)
-      : undefined;
+    const resolvedLlm = resolveRuntimeLlmConfig(workflowRuntime, {
+      providers,
+      models,
+      defaultProviderId: settings.defaultProviderId,
+      defaultModelId: settings.defaultModelId,
+      selectionProviderId: studioSelection.providerId,
+      selectionModel: studioSelection.model,
+    });
+    const llmSpec = getRuntimeProviderSpec(resolvedLlm.providerId);
     if (
       workflowRuntime.nodes.some((node) => node.type === "llm") &&
-      (!llmSpec || !workflowRuntime.llmModel)
+      (!llmSpec || !resolvedLlm.modelId)
     ) {
-      toast.error("Configure provider + modelo no runtime antes de executar.");
+      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
       return;
     }
 
@@ -100,7 +110,7 @@ export function WorkflowPage() {
           : [workflowRuntime.nodes.at(-1)?.id].filter(Boolean),
         input: parsedInput,
         llmSpec,
-        llmModel: workflowRuntime.llmModel,
+        llmModel: resolvedLlm.modelId,
       },
       onEvent: (name, data) => {
         if (name === "node:start" && isRecord(data)) {

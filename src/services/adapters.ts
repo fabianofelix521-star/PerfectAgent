@@ -23,6 +23,21 @@ import { webContainerService } from "@/services/webcontainer";
 
 export type StreamChunk = { event: string; data: unknown };
 
+const COGNITIVE_RUNTIME_KINDS = new Set([
+  "prometheus",
+  "morpheus-creative",
+  "apollo",
+  "hermes",
+  "athena",
+  "vulcan",
+  "oracle",
+  "sophia",
+  "asclepius",
+  "logos",
+  "prometheus-mind",
+  "nexus-prime",
+]);
+
 export interface AdapterContext {
   spec: ProviderSpec; // Resolved + decoded provider spec for fallbacks.
   model: string; // Selected AI model.
@@ -818,6 +833,68 @@ class EphemeralGenesisAdapter implements RuntimeAdapter {
   }
 }
 
+/* -------------------------------------------------------- Cognitive runtimes */
+
+class CognitiveRuntimeAdapter implements RuntimeAdapter {
+  constructor(public config: AgentRuntime) {}
+  supports(cap: keyof NonNullable<AgentRuntime["capabilities"]>) {
+    return Boolean(this.config.capabilities?.[cap]);
+  }
+  private async contextFor(prompt: string) {
+    const { buildCognitiveRuntimeContext } = await import(
+      "@/runtimes/runtimeContext"
+    );
+    return buildCognitiveRuntimeContext(this.config.kind, prompt);
+  }
+  async chat(
+    messages: ChatMessageV2[],
+    ctx: AdapterContext,
+    onChunk: (c: StreamChunk) => void,
+  ) {
+    const lastUser =
+      [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    const cognitive = await this.contextFor(lastUser);
+    if (cognitive) {
+      onChunk({
+        event: "token",
+        data: {
+          delta: `_${cognitive.label} · confidence ${Math.round(cognitive.confidence * 100)}%_\n\n`,
+        },
+      });
+    }
+    const systemPrompt =
+      [cognitive?.context, ctx.systemPrompt].filter(Boolean).join("\n\n---\n\n") ||
+      undefined;
+    return llmFallback(messages, { ...ctx, systemPrompt }, onChunk);
+  }
+  async generateProject(p: CodeGenParams) {
+    const cognitive = await this.contextFor(p.request);
+    if (cognitive) {
+      p.onEvent({
+        phase: "streaming",
+        message: `${cognitive.label} · confidence ${Math.round(cognitive.confidence * 100)}%`,
+        level: "info",
+      });
+    }
+    const systemContext =
+      [cognitive?.context, p.systemContext].filter(Boolean).join("\n\n---\n\n") ||
+      undefined;
+    return defaultGenerateProject({ ...p, systemContext });
+  }
+  async healthCheck() {
+    return { ok: true, latencyMs: 0 };
+  }
+  async testCodeGeneration(ctx?: { spec?: ProviderSpec; model?: string }) {
+    const r = await defaultTestCodeGeneration(ctx?.spec, ctx?.model);
+    return {
+      ...r,
+      details: r.ok
+        ? `${this.config.name} cognitive runtime ready. ${r.details ?? ""}`
+        : r.details,
+    };
+  }
+}
+
 /* -------------------------------------------------------- Supreme Coordinator */
 
 class SupremeCoordinatorAdapter implements RuntimeAdapter {
@@ -832,11 +909,20 @@ class SupremeCoordinatorAdapter implements RuntimeAdapter {
       const { getSupremeCoordinator } =
         await import("@/services/supremeCoordinator");
       const { supervisor, agent, systemContext } =
-        getSupremeCoordinator().buildContext(prompt);
+        await getSupremeCoordinator().buildContext(prompt);
+      const { buildCognitiveRuntimeContext } = await import(
+        "@/runtimes/runtimeContext"
+      );
+      const nexus = isComplexForNexus(prompt)
+        ? await buildCognitiveRuntimeContext("nexus-prime", prompt)
+        : undefined;
       const label = agent
         ? `${supervisor.emoji} ${supervisor.name} → ${agent.name}`
         : `${supervisor.emoji} ${supervisor.name} (no specialist)`;
-      return { context: systemContext, label };
+      return {
+        context: [systemContext, nexus?.context].filter(Boolean).join("\n\n---\n\n"),
+        label: nexus ? `${label} + Nexus Prime` : label,
+      };
     } catch {
       return undefined;
     }
@@ -881,7 +967,24 @@ class SupremeCoordinatorAdapter implements RuntimeAdapter {
   }
 }
 
+function isComplexForNexus(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  const domains = [
+    /crypto|defi|market|trade|solana/,
+    /game|3d|visual|design|narrativa/,
+    /medical|medico|bio|clinical|diagnostico/,
+    /marketing|growth|copy|vendas/,
+    /research|paper|pesquisa|fontes/,
+    /code|software|devops|bug|arquitetura/,
+    /strategy|estrategia|business|risco/,
+  ].filter((rx) => rx.test(lower)).length;
+  return domains >= 2 || prompt.length > 280;
+}
+
 export function createAdapter(config: AgentRuntime): RuntimeAdapter {
+  if (COGNITIVE_RUNTIME_KINDS.has(config.kind ?? "generic")) {
+    return new CognitiveRuntimeAdapter(config);
+  }
   switch (config.kind ?? "langgraph-dag") {
     case "langgraph-dag":
       return new LangGraphDagAdapter(config);

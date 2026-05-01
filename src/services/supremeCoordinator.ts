@@ -20,6 +20,16 @@
  * survives reloads.
  */
 
+import {
+  buildAllConceptualAgents,
+  registerAllAgents,
+} from "@/modules/supreme/supervisors/SupervisorRegistry";
+import {
+  TaskRouter,
+  normalizeSupervisorId,
+} from "@/modules/supreme/agents/strategic/TaskRouter";
+import type { BaseAgent } from "@/types/agents";
+
 const STORAGE_KEY = "supreme-coordinator-agents-v1";
 
 export type LatencyTier = "hot" | "warm" | "cold";
@@ -364,7 +374,7 @@ export const INFRASTRUCTURE_NODES = [
 
 /* ------------------------------------------------------------ built-in agents */
 
-const BUILTIN_AGENTS: SwarmAgent[] = [
+const CORE_BUILTIN_AGENTS: SwarmAgent[] = [
   {
     id: "fin-jito-sniper",
     supervisorId: "financial",
@@ -438,6 +448,25 @@ Output production-grade TypeScript using @solana/web3.js and the Solscan/DexScre
   },
 ];
 
+const CONCEPTUAL_BUILTIN_AGENTS: SwarmAgent[] = buildAllConceptualAgents().map(
+  (agent) => ({
+    id: agent.id,
+    supervisorId: normalizeSupervisorId(agent.supervisorId),
+    name: agent.name,
+    description: agent.description,
+    soulPrompt: agent.systemPrompt,
+    tags: agent.tags,
+    code: undefined,
+    builtIn: true,
+    createdAt: 0,
+  }),
+);
+
+const BUILTIN_AGENTS: SwarmAgent[] = [
+  ...CORE_BUILTIN_AGENTS,
+  ...CONCEPTUAL_BUILTIN_AGENTS,
+];
+
 /* ------------------------------------------------------------ store */
 
 type Listener = (agents: SwarmAgent[]) => void;
@@ -445,9 +474,11 @@ type Listener = (agents: SwarmAgent[]) => void;
 class SupremeCoordinatorStore {
   private agents: SwarmAgent[] = [];
   private listeners = new Set<Listener>();
+  private readonly taskRouter = new TaskRouter();
 
   constructor() {
     this.load();
+    registerAllAgents(this);
   }
 
   private load() {
@@ -524,6 +555,28 @@ class SupremeCoordinatorStore {
     return agent;
   }
 
+  registerAgent(agent: BaseAgent): SwarmAgent {
+    const swarmAgent: SwarmAgent = {
+      id: agent.id,
+      supervisorId: normalizeSupervisorId(agent.supervisorId),
+      name: agent.name,
+      description: agent.description,
+      soulPrompt: agent.systemPrompt,
+      tags: agent.tags,
+      builtIn: true,
+      createdAt: 0,
+    };
+    const idx = this.agents.findIndex((item) => item.id === swarmAgent.id);
+    if (idx >= 0) {
+      this.agents[idx] = swarmAgent;
+    } else {
+      this.agents = [...this.agents, swarmAgent];
+    }
+    this.persist();
+    this.notify();
+    return swarmAgent;
+  }
+
   removeAgent(id: string): boolean {
     const target = this.agents.find((a) => a.id === id);
     if (!target || target.builtIn) return false;
@@ -539,11 +592,45 @@ class SupremeCoordinatorStore {
    * Classify a prompt → score every supervisor by tag-hit count → return the winner.
    * Falls back to "engineering" (warm) if nothing matches — a safe generic specialist.
    */
-  classify(prompt: string): {
+  async classify(prompt: string): Promise<{
     supervisor: SupervisorDef;
     score: number;
     matched: string[];
-  } {
+  }> {
+    try {
+      const routed = await this.taskRouter.execute(
+        {
+          prompt,
+          sessionId: "supreme-router",
+          requestId: `router-${Date.now()}`,
+        },
+        {
+          sessionId: "supreme-router",
+          previousAgents: [],
+          sharedMemory: new Map<string, any>(),
+          startTime: Date.now(),
+        },
+      );
+      const primary = normalizeSupervisorId(
+        String(routed.result.primarySupervisor ?? "engineering"),
+      );
+      const supervisor =
+        SUPERVISORS.find((s) => s.id === primary) ??
+        SUPERVISORS.find((s) => s.id === "engineering")!;
+      const matched = Object.entries(
+        (routed.result.allScores ?? {}) as Record<string, number>,
+      )
+        .filter(([, score]) => score > 0)
+        .map(([id]) => id);
+      return {
+        supervisor,
+        score: Number(routed.confidence ?? 0),
+        matched,
+      };
+    } catch {
+      // Fallback to lexical router if strategic router fails.
+    }
+
     const lower = prompt.toLowerCase();
     let best = {
       supervisor: SUPERVISORS.find((s) => s.id === "engineering")!,
@@ -593,13 +680,13 @@ class SupremeCoordinatorStore {
    * Build the systemContext additive that the LLM will adopt.
    * Includes: supervisor identity, picked agent's soulPrompt, optional code excerpt.
    */
-  buildContext(prompt: string): {
+  async buildContext(prompt: string): Promise<{
     supervisor: SupervisorDef;
     agent: SwarmAgent | null;
     matched: string[];
     systemContext: string;
-  } {
-    const { supervisor, matched } = this.classify(prompt);
+  }> {
+    const { supervisor, matched } = await this.classify(prompt);
     const agent = this.pickAgent(supervisor.id, prompt);
     const parts: string[] = [];
     parts.push(`# Supreme Coordinator routed this task`);

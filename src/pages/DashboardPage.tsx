@@ -27,6 +27,7 @@ function formatNumber(value: number): string {
 }
 
 export function DashboardPage() {
+  const appName = useConfig((s) => s.settings.appName);
   const chatThreads = useConfig((s) => s.chatThreads);
   const studioThreads = useConfig((s) => s.studioThreads);
   const projects = useConfig((s) => s.projects);
@@ -104,7 +105,7 @@ export function DashboardPage() {
   return (
     <WorkspaceShell
       eyebrow="Dashboard"
-      title="Operação PerfectAgent"
+      title={`Operação ${appName}`}
       description="Métricas reais lidas dos stores locais: conversas, projetos, runtimes, ferramentas e integrações."
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

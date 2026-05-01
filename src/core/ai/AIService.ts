@@ -1,6 +1,6 @@
-import { api } from "@/services/api";
-import { getRuntimeProviderSpec, useConfig } from "@/stores/config";
+import { useConfig } from "@/stores/config";
 import type { ChatMessageV2, ProviderConfig } from "@/types";
+import { unifiedAIService } from "@/core/ai/providers/UnifiedAIService";
 
 export interface ModelInfo {
   id: string;
@@ -24,61 +24,16 @@ class AIServiceImpl {
     messages: ChatMessageV2[],
     options: AIRequestOptions,
   ): AsyncIterable<string> {
-    const provider = this.getProviderForModel(options.model, options.providerId);
-    if (!provider) throw new Error("Nenhum provider configurado para o modelo.");
-    const spec = getRuntimeProviderSpec(provider.id);
-    if (!spec) throw new Error("Provider inválido.");
-
-    const queue: string[] = [];
-    let done = false;
-    let failure: Error | null = null;
-    let wake: (() => void) | null = null;
-    const notify = () => {
-      wake?.();
-      wake = null;
-    };
-
-    const stop = api.streamChat({
-      spec,
+    for await (const chunk of unifiedAIService.stream({
+      messages,
       model: options.model,
-      messages: messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      providerId: options.providerId,
       temperature: options.temperature,
-      onToken: (delta) => {
-        queue.push(delta);
-        notify();
-      },
-      onDone: () => {
-        done = true;
-        notify();
-      },
-      onError: (err) => {
-        failure = new Error(err);
-        done = true;
-        notify();
-      },
-    });
-
-    options.signal?.addEventListener("abort", () => {
-      stop();
-      done = true;
-      notify();
-    });
-
-    while (!done || queue.length > 0) {
-      const next = queue.shift();
-      if (next !== undefined) {
-        yield next;
-        continue;
-      }
-      if (failure) throw failure;
-      await new Promise<void>((resolve) => {
-        wake = resolve;
-      });
+      maxTokens: options.maxTokens,
+      signal: options.signal,
+    })) {
+      yield chunk.delta;
     }
-    if (failure) throw failure;
   }
 
   async getAvailableModels(): Promise<ModelInfo[]> {
@@ -109,9 +64,7 @@ class AIServiceImpl {
   }
 
   estimateCost(model: string, inputTokens: number): number {
-    if (/gpt-4o|claude|opus|sonnet/i.test(model)) return inputTokens * 0.000005;
-    if (/mini|haiku|flash|8b/i.test(model)) return inputTokens * 0.0000005;
-    return inputTokens * 0.000001;
+    return unifiedAIService.estimateCost(model, inputTokens);
   }
 
   getProviderForModel(model: string, preferredProviderId?: string) {

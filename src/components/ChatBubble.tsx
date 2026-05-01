@@ -1,10 +1,18 @@
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
+import { Code2 } from "lucide-react";
 import type { ChatMessageV2 } from "@/types";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { StreamingText } from "@/components/AIStreamingRenderer";
 import { ThinkingPanel } from "@/components/ThinkingPanel";
 import { normalizeAssistantOutput } from "@/services/normalize";
 import { cn } from "@/utils/cn";
+import {
+  AttachmentViewerCard,
+  createViewerFileFromAttachment,
+  createViewerFileFromProjectFile,
+  GeneratedFileCard,
+} from "@/shared/components/viewer/UniversalViewer";
 
 export interface ChatBubbleProps {
   message: ChatMessageV2;
@@ -24,7 +32,7 @@ export interface ChatBubbleProps {
  *   thinking chunks (plan/act/verify) extracted by `normalizeAssistantOutput`
  *   and rendered through the collapsible `ThinkingPanel` — never as raw JSON.
  */
-export function ChatBubble({
+export const ChatBubble = memo(function ChatBubble({
   message,
   index = 0,
   compact,
@@ -32,9 +40,10 @@ export function ChatBubble({
   onApplyToEditor,
 }: ChatBubbleProps) {
   const isUser = message.role === "user";
+  const isAssistantStreaming = !isUser && Boolean(message.streaming);
 
   const normalized = useMemo(() => {
-    if (isUser) return null;
+    if (isUser || isAssistantStreaming) return null;
     return normalizeAssistantOutput({
       id: message.id,
       createdAt: message.createdAt,
@@ -47,6 +56,7 @@ export function ChatBubble({
     });
   }, [
     isUser,
+    isAssistantStreaming,
     message.id,
     message.createdAt,
     message.providerId,
@@ -54,6 +64,14 @@ export function ChatBubble({
     message.runtimeId,
     message.content,
   ]);
+  const codeBlockCount = useMemo(
+    () => countFencedCodeBlocks(message.content),
+    [message.content],
+  );
+  const streamingText = useMemo(() => {
+    if (!isAssistantStreaming) return "";
+    return stripFencedCodeBlocks(message.content);
+  }, [isAssistantStreaming, message.content]);
 
   const bubble = (
     <div
@@ -85,11 +103,29 @@ export function ChatBubble({
             )}
           {normalized && normalized.finalMarkdown ? (
             <MarkdownRenderer
-              content={normalized.finalMarkdown}
+              content={
+                compact && message.generatedFiles?.length
+                  ? stripFencedCodeBlocks(normalized.finalMarkdown)
+                  : normalized.finalMarkdown
+              }
               enableApplyToEditor={enableApplyToEditor}
               onApplyToEditor={onApplyToEditor}
               compact={compact}
             />
+          ) : isAssistantStreaming ? (
+            <>
+              <StreamingText
+                text={streamingText}
+                isStreaming
+                className="whitespace-pre-wrap text-[13px] leading-5 text-slate-700"
+              />
+              {codeBlockCount > 0 ? (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <Code2 className="h-3 w-3" />
+                  {codeBlockCount} bloco(s) de codigo oculto(s) ate concluir
+                </div>
+              ) : null}
+            </>
           ) : (
             <span className="text-slate-400">
               {message.streaming ? "▍" : ""}
@@ -98,17 +134,28 @@ export function ChatBubble({
           {message.streaming && (
             <span className="ml-1 inline-block h-3 w-2 animate-pulse bg-current align-middle" />
           )}
+          {message.generatedFiles?.length ? (
+            <div className="mt-2 space-y-1.5">
+              <p className="text-[11px] font-semibold text-slate-500">
+                {message.generatedFiles.length} arquivo(s) gerado(s)
+              </p>
+              {message.generatedFiles.map((file) => (
+                <GeneratedFileCard
+                  key={file.path}
+                  file={createViewerFileFromProjectFile(file)}
+                />
+              ))}
+            </div>
+          ) : null}
         </>
       )}
       {message.attachments?.length ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 grid gap-2">
           {message.attachments.map((a, i) => (
-            <span
+            <AttachmentViewerCard
               key={i}
-              className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-bold"
-            >
-              {a.name}
-            </span>
+              file={createViewerFileFromAttachment(a)}
+            />
           ))}
         </div>
       ) : null}
@@ -144,6 +191,30 @@ export function ChatBubble({
       </div>
     </motion.div>
   );
+}, areChatBubblePropsEqual);
+
+function areChatBubblePropsEqual(prev: ChatBubbleProps, next: ChatBubbleProps) {
+  if (prev.index !== next.index) return false;
+  if (prev.compact !== next.compact) return false;
+  if (prev.message.id !== next.message.id) return false;
+  if (prev.message.streaming !== next.message.streaming) return false;
+  if (next.message.streaming) {
+    return prev.message.content === next.message.content;
+  }
+  return (
+    prev.message.content === next.message.content &&
+    prev.message.error === next.message.error &&
+    prev.message.attachments?.length === next.message.attachments?.length &&
+    prev.message.generatedFiles?.length === next.message.generatedFiles?.length
+  );
+}
+
+function stripFencedCodeBlocks(input: string): string {
+  return input.replace(/```[\s\S]*?```/g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function countFencedCodeBlocks(input: string): number {
+  return (input.match(/```[\s\S]*?```/g) ?? []).length;
 }
 
 function Badge({
@@ -164,3 +235,4 @@ function Badge({
     </span>
   );
 }
+

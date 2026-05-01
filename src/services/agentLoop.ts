@@ -17,6 +17,8 @@ import {
   extractProjectFiles,
 } from "@/services/boltArtifact";
 import type { ProviderSpec, ProjectFile } from "@/types";
+import { ModelRouter } from "@/core/ai/routing/ModelRouter";
+import { useConfig } from "@/stores/config";
 
 export type AgentPhase =
   | "idle"
@@ -77,6 +79,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
   const emit = (ev: AgentEvent) => onEvent(ev);
   let iteration = 0;
   let allFiles: ProjectFile[] = [];
+  const modelRouter = new ModelRouter();
 
   try {
     /* ---- Phase 1: Stream AI response ---- */
@@ -88,11 +91,30 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
     ].filter(Boolean).join("\n\n---\n\n");
 
     let raw = "";
+    const cfgState = useConfig.getState();
+    const routerSettings = cfgState.settings?.modelRouter;
+    const routerEnabled = Boolean(routerSettings?.enabled);
+    const routedModel = routerEnabled
+      ? (await modelRouter.route({
+          messages: [
+            {
+              id: `msg-${Date.now().toString(36)}`,
+              role: "user",
+              content: request,
+              createdAt: Date.now(),
+            },
+          ],
+          model,
+          providerId: undefined,
+          costOptimize: Boolean(routerSettings?.preferCost),
+        })).model
+      : model;
+
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const stop = api.streamChat({
         spec,
-        model,
+        model: routedModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: request },
@@ -166,7 +188,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
 
         if (!installResult.success) {
           emit({ phase: "debugging", message: "Install failed, auto-fixing...", level: "warn", iteration });
-          allFiles = await autoFixFile(files, "package.json", logs, spec, model, signal);
+          allFiles = await autoFixFile(files, "package.json", logs, spec, routedModel, signal);
           onFiles(allFiles);
           continue;
         }
@@ -186,7 +208,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
           emit({ phase: "debugging", message: "Dev server failed, auto-fixing...", level: "warn", iteration, detail: errMsg });
           // Identify culprit file from logs
           const culprit = identifyCulpritFile(logs, allFiles);
-          allFiles = await autoFixFile(allFiles, culprit, logs, spec, model, signal);
+          allFiles = await autoFixFile(allFiles, culprit, logs, spec, routedModel, signal);
           onFiles(allFiles);
         }
       }

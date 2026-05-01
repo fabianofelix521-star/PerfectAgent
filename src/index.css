@@ -27,6 +27,10 @@
   --radius-pill: 999px;
 }
 
+:root.dark {
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -52,6 +56,11 @@ body {
   background: #cfd5f4;
   font-size: var(--font-base);
   line-height: 1.45;
+}
+
+:root.dark body {
+  background: #111418;
+  color: #eaedf1;
 }
 
 button,
@@ -125,6 +134,27 @@ input {
   border-radius: 8px;
 }
 
+.brand-mark {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(176, 187, 208, 0.74));
+  box-shadow:
+    0 18px 46px rgba(55, 65, 81, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.brand-lockup {
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-lockup::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 48%);
+  pointer-events: none;
+}
+
 
 .app-ambient {
   position: relative;
@@ -132,6 +162,14 @@ input {
     radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.62), transparent 28%),
     radial-gradient(circle at 78% 70%, rgba(153, 184, 255, 0.42), transparent 30%),
     linear-gradient(135deg, #c9cff2 0%, #e7edf8 47%, #c6cef5 100%);
+}
+
+:root.dark .app-ambient {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(148, 163, 184, 0.14), transparent 28%),
+    radial-gradient(circle at 78% 70%, rgba(71, 85, 105, 0.22), transparent 32%),
+    linear-gradient(135deg, #111418 0%, #171c22 48%, #0d1014 100%);
+  color: #eaedf1;
 }
 
 .app-ambient::before,
@@ -152,6 +190,11 @@ input {
   border: 1px solid rgba(22, 173, 208, 0.34);
 }
 
+:root.dark .app-ambient::before,
+:root.dark .app-ambient::after {
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
 .app-ambient::after {
   width: 42rem;
   height: 42rem;
@@ -166,6 +209,11 @@ input {
   border: 1px solid rgba(21, 169, 198, 0.33);
   border-radius: 50%;
   opacity: 0.65;
+}
+
+:root.dark .orbit-line {
+  border-color: rgba(148, 163, 184, 0.12);
+  opacity: 0.44;
 }
 
 .orbit-line-one {
@@ -186,11 +234,83 @@ input {
   isolation: isolate;
 }
 
+:root.dark .glass-shell {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(20, 24, 30, 0.78) !important;
+  box-shadow: 0 42px 130px rgba(0, 0, 0, 0.5) !important;
+}
+
 .chat-surface {
   background:
     radial-gradient(circle at 72% 54%, rgba(164, 183, 255, 0.42), transparent 30%),
     radial-gradient(circle at 34% 12%, rgba(255, 255, 255, 0.95), transparent 34%),
     linear-gradient(135deg, rgba(241, 248, 255, 0.88) 0%, rgba(250, 247, 237, 0.82) 43%, rgba(214, 225, 255, 0.9) 100%);
+}
+
+:root.dark .chat-surface {
+  background:
+    radial-gradient(circle at 72% 54%, rgba(100, 116, 139, 0.16), transparent 30%),
+    radial-gradient(circle at 34% 12%, rgba(51, 65, 85, 0.28), transparent 34%),
+    linear-gradient(135deg, rgba(21, 25, 31, 0.96) 0%, rgba(25, 29, 36, 0.94) 48%, rgba(18, 22, 28, 0.98) 100%);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #eaedf1;
+}
+
+:root.dark .chat-surface .text-slate-950,
+:root.dark .glass-shell .text-slate-950 {
+  color: #f8fafc !important;
+}
+
+:root.dark .chat-surface .text-slate-900,
+:root.dark .chat-surface .text-slate-800,
+:root.dark .glass-shell .text-slate-900,
+:root.dark .glass-shell .text-slate-800 {
+  color: #e7ebef !important;
+}
+
+:root.dark .chat-surface .text-slate-700,
+:root.dark .chat-surface .text-slate-600,
+:root.dark .glass-shell .text-slate-700,
+:root.dark .glass-shell .text-slate-600 {
+  color: #c8ced6 !important;
+}
+
+:root.dark .chat-surface .text-slate-500,
+:root.dark .chat-surface .text-slate-400,
+:root.dark .chat-surface .text-slate-300,
+:root.dark .glass-shell .text-slate-500,
+:root.dark .glass-shell .text-slate-400,
+:root.dark .glass-shell .text-slate-300 {
+  color: #9aa4b2 !important;
+}
+
+:root.dark .chat-surface [class*="bg-white"],
+:root.dark .glass-shell [class*="bg-white"] {
+  background-color: rgba(29, 34, 41, 0.78) !important;
+}
+
+:root.dark .chat-surface [class*="border-white"],
+:root.dark .glass-shell [class*="border-white"] {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:root.dark .chat-surface input,
+:root.dark .chat-surface textarea,
+:root.dark .chat-surface select,
+:root.dark .glass-shell input,
+:root.dark .glass-shell textarea,
+:root.dark .glass-shell select {
+  color: #edf1f5;
+}
+
+:root.dark option {
+  background: #181d24;
+  color: #edf1f5;
+}
+
+:root.dark .chat-surface .fx-card,
+:root.dark .glass-shell .fx-card {
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.28) !important;
 }
 
 .app-scrollbar {
@@ -212,6 +332,51 @@ input {
   background: transparent;
 }
 
+@supports (padding: env(safe-area-inset-bottom)) {
+  .mobile-tab-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 768px) {
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .overflow-y-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  .app-scrollbar::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.32);
+  }
+
+  .monaco-editor {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
 .scene-card {
   transform-origin: center;
 }
@@ -223,3 +388,158 @@ input {
   background: linear-gradient(140deg, rgba(255, 255, 255, 0.2), transparent 34%, rgba(255, 255, 255, 0.12));
   pointer-events: none;
 }
+
+/* ============================================================
+   DARK MODE — lindo e leve
+   Applied when html.dark is set
+   ============================================================ */
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background: #111418;
+  color: #eaedf1;
+}
+
+/* Ambient background blobs */
+html.dark .app-ambient {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(148, 163, 184, 0.12), transparent 28%),
+    radial-gradient(circle at 78% 70%, rgba(71, 85, 105, 0.18), transparent 30%),
+    linear-gradient(135deg, #111418 0%, #171c22 47%, #0d1014 100%);
+}
+
+html.dark .orbit-line {
+  border-color: rgba(148, 163, 184, 0.12);
+}
+
+/* Glass overrides */
+html.dark .glass {
+  background: rgba(24, 29, 36, 0.74);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.34);
+}
+html.dark .glass-soft {
+  background: rgba(24, 29, 36, 0.58);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Chat surface (pages shell) */
+html.dark .chat-surface {
+  background:
+    radial-gradient(circle at 72% 54%, rgba(100, 116, 139, 0.16), transparent 30%),
+    radial-gradient(circle at 34% 12%, rgba(51, 65, 85, 0.24), transparent 34%),
+    linear-gradient(135deg, rgba(21, 25, 31, 0.96) 0%, rgba(25, 29, 36, 0.94) 43%, rgba(18, 22, 28, 0.98) 100%);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Surface cards (explicit utility overrides; avoid broad class* selectors) */
+html.dark .bg-white { background-color: rgba(28, 33, 40, 0.96) !important; }
+html.dark .bg-white\/95 { background-color: rgba(28, 33, 40, 0.95) !important; }
+html.dark .bg-white\/90 { background-color: rgba(28, 33, 40, 0.90) !important; }
+html.dark .bg-white\/88 { background-color: rgba(28, 33, 40, 0.88) !important; }
+html.dark .bg-white\/85 { background-color: rgba(28, 33, 40, 0.85) !important; }
+html.dark .bg-white\/80 { background-color: rgba(28, 33, 40, 0.80) !important; }
+html.dark .bg-white\/75 { background-color: rgba(28, 33, 40, 0.75) !important; }
+html.dark .bg-white\/70 { background-color: rgba(28, 33, 40, 0.70) !important; }
+html.dark .bg-white\/60 { background-color: rgba(28, 33, 40, 0.66) !important; }
+html.dark .bg-white\/55 { background-color: rgba(28, 33, 40, 0.62) !important; }
+html.dark .bg-white\/50 { background-color: rgba(28, 33, 40, 0.58) !important; }
+html.dark .bg-white\/45 { background-color: rgba(28, 33, 40, 0.54) !important; }
+html.dark .bg-white\/40 { background-color: rgba(28, 33, 40, 0.50) !important; }
+
+html.dark .border-white\/80,
+html.dark .border-white\/70,
+html.dark .border-white\/60,
+html.dark .border-white\/50 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Slate utility overrides used heavily across pages */
+html.dark .bg-slate-50 { background-color: rgba(39, 44, 52, 0.76) !important; }
+html.dark .bg-slate-50\/90 { background-color: rgba(39, 44, 52, 0.9) !important; }
+html.dark .bg-slate-50\/80 { background-color: rgba(39, 44, 52, 0.82) !important; }
+html.dark .bg-slate-50\/70 { background-color: rgba(39, 44, 52, 0.78) !important; }
+html.dark .bg-slate-50\/60 { background-color: rgba(39, 44, 52, 0.72) !important; }
+html.dark .bg-slate-50\/50 { background-color: rgba(39, 44, 52, 0.66) !important; }
+html.dark .bg-slate-50\/40 { background-color: rgba(39, 44, 52, 0.58) !important; }
+html.dark .bg-slate-100 { background-color: rgba(48, 54, 63, 0.8) !important; }
+html.dark .bg-slate-100\/90 { background-color: rgba(48, 54, 63, 0.9) !important; }
+html.dark .bg-slate-100\/80 { background-color: rgba(48, 54, 63, 0.84) !important; }
+html.dark .bg-slate-100\/70 { background-color: rgba(48, 54, 63, 0.78) !important; }
+html.dark .bg-slate-100\/60 { background-color: rgba(48, 54, 63, 0.72) !important; }
+html.dark .bg-slate-100\/50 { background-color: rgba(48, 54, 63, 0.64) !important; }
+html.dark .bg-slate-200 { background-color: rgba(62, 69, 80, 0.82) !important; }
+html.dark .bg-slate-200\/80 { background-color: rgba(62, 69, 80, 0.82) !important; }
+html.dark .bg-slate-200\/70 { background-color: rgba(62, 69, 80, 0.74) !important; }
+html.dark .bg-slate-200\/60 { background-color: rgba(62, 69, 80, 0.68) !important; }
+html.dark .bg-slate-900 { background-color: #171b22 !important; }
+html.dark .bg-slate-950 { background-color: #0c0f13 !important; }
+html.dark .bg-\[\#17172d\] { background-color: #242a33 !important; }
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+html.dark .border-slate-100\/60,
+html.dark .border-slate-100\/70,
+html.dark .border-slate-200\/80,
+html.dark .border-slate-200\/70,
+html.dark .border-slate-200\/60,
+html.dark .border-slate-300\/80,
+html.dark .border-slate-300\/70 {
+  border-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+/* Text colors in dark */
+html.dark .text-slate-950,
+html.dark .text-slate-900 { color: #f3f4f6 !important; }
+html.dark .text-slate-800 { color: #e7ebef !important; }
+html.dark .text-slate-700 { color: #c8ced6 !important; }
+html.dark .text-slate-600 { color: #a3adb9 !important; }
+html.dark .text-slate-500 { color: #7d8896 !important; }
+html.dark .text-slate-400 { color: #9aa4b2 !important; }
+html.dark .text-slate-300 { color: #cfd5dd !important; }
+
+/* App sidebar dark */
+html.dark .app-sidebar {
+  background: rgba(19, 23, 29, 0.86) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Input/textarea dark overrides (avoid breaking color/range controls) */
+html.dark input:not([type="range"]):not([type="color"]),
+html.dark textarea,
+html.dark select {
+  background: rgba(29, 34, 41, 0.88);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #eef2f6;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: #7d8896; }
+
+html.dark .brand-lockup {
+  background: rgba(27, 32, 39, 0.86);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.28);
+}
+
+html.dark .brand-mark {
+  background: linear-gradient(180deg, rgba(240, 244, 248, 0.2), rgba(148, 163, 184, 0.08));
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Rounded card surfaces */
+html.dark .rounded-3xl,
+html.dark .rounded-2xl,
+html.dark .rounded-xl {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Tailwind dark: variant support */
+@custom-variant dark (&:where(html.dark, html.dark *));

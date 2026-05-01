@@ -51,6 +51,36 @@ export function resolveModelId(
   return options[0]?.id;
 }
 
+export function resolveRuntimeLlmConfig(
+  runtime: Pick<AgentRuntime, "llmProviderId" | "llmModel">,
+  params: {
+    providers: Record<string, ProviderConfig>;
+    models: ModelConfig[];
+    defaultProviderId?: string;
+    defaultModelId?: string;
+    selectionProviderId?: string;
+    selectionModel?: string;
+  },
+): { providerId?: string; modelId?: string } {
+  const providerId = resolveProviderId(
+    runtime.llmProviderId ?? params.selectionProviderId,
+    params.defaultProviderId,
+    params.providers,
+  );
+  const selectionModel =
+    params.selectionProviderId === providerId ? params.selectionModel : undefined;
+  const defaultModelId =
+    params.defaultProviderId === providerId ? params.defaultModelId : undefined;
+  const modelId = resolveModelId(
+    runtime.llmModel ?? selectionModel,
+    defaultModelId,
+    providerId,
+    params.providers,
+    params.models,
+  );
+  return { providerId, modelId };
+}
+
 export function resolveRuntimeId(
   selectedRuntimeId: string | undefined,
   defaultRuntimeId: string | undefined,

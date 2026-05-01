@@ -1,11 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Image, Music, Send, Video } from "lucide-react";
 import { Link } from "react-router-dom";
-import { WorkspaceShell, Surface, SectionTitle, SelectControl, Spinner } from "@/components/ui";
+import { WorkspaceShell, Surface, SectionTitle, SelectControl, Spinner, EditableField } from "@/components/ui";
 import { useConfig } from "@/stores/config";
 import { toast } from "@/components/Toast";
+import { getModelOptions } from "@/services/configSelectors";
+import { presetById } from "@/services/providers";
+import type { ProviderAudioMode } from "@/types";
 
 export type MediaStudioKind = "image" | "video" | "audio";
+
+const DEFAULT_AUDIO_MODES: ProviderAudioMode[] = ["tts", "stt", "realtime"];
+const DEFAULT_AUDIO_VOICES = ["default", "alloy", "nova", "verse", "calm"];
 
 const META = {
   image: {
@@ -13,21 +19,21 @@ const META = {
     title: "Geração de imagens",
     desc: "Usa os providers configurados para preparar prompts e registrar solicitações de imagem.",
     icon: Image,
-    providerIds: ["openai", "stability", "replicate", "openrouter"],
+    providerIds: ["openai", "stability", "replicate", "openrouter", "dashscope", "custom"],
   },
   video: {
     eyebrow: "Video Studio",
     title: "Geração de vídeo",
     desc: "Organiza prompts e providers compatíveis para fluxos de vídeo.",
     icon: Video,
-    providerIds: ["replicate", "openrouter", "custom"],
+    providerIds: ["replicate", "openrouter", "openai", "dashscope", "xiaomi-mimo", "custom"],
   },
   audio: {
     eyebrow: "Audio Studio",
     title: "Geração de áudio",
     desc: "Organiza prompts e providers compatíveis para voz e áudio.",
     icon: Music,
-    providerIds: ["elevenlabs", "replicate", "openrouter"],
+    providerIds: ["elevenlabs", "replicate", "openrouter", "openai", "xai-voice", "xai", "dashscope", "xiaomi-mimo", "custom"],
   },
 } satisfies Record<
   MediaStudioKind,
@@ -42,8 +48,12 @@ const META = {
 
 export function MediaStudioPage({ kind = "image" }: { kind?: MediaStudioKind }) {
   const providers = useConfig((s) => s.providers);
+  const models = useConfig((s) => s.models);
   const [prompt, setPrompt] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [audioMode, setAudioMode] = useState<ProviderAudioMode>("tts");
+  const [voiceName, setVoiceName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const meta = META[kind];
   const Icon = meta.icon;
@@ -61,6 +71,41 @@ export function MediaStudioPage({ kind = "image" }: { kind?: MediaStudioKind }) 
     [meta.providerIds, providers],
   );
 
+  useEffect(() => {
+    if (!providerId && configuredProviders[0]) {
+      setProviderId(configuredProviders[0].id);
+    }
+  }, [configuredProviders, providerId]);
+
+  const activeProviderId = providerId || configuredProviders[0]?.id || "";
+  const activeProvider = activeProviderId ? providers[activeProviderId] : undefined;
+  const activePreset = activeProvider ? presetById(activeProvider.presetId) : undefined;
+  const modelOptions = useMemo(
+    () => (activeProvider ? getModelOptions(activeProvider.id, providers, models, true) : []),
+    [activeProvider, models, providers],
+  );
+  const audioModes = activePreset?.audioModes?.length ? activePreset.audioModes : DEFAULT_AUDIO_MODES;
+  const voiceOptions = activePreset?.presetVoices?.length ? activePreset.presetVoices : DEFAULT_AUDIO_VOICES;
+
+  useEffect(() => {
+    const nextModel = modelOptions[0]?.id ?? activeProvider?.defaultModel ?? "";
+    if (nextModel && !modelId) setModelId(nextModel);
+  }, [activeProvider?.defaultModel, modelId, modelOptions]);
+
+  useEffect(() => {
+    if (kind !== "audio") return;
+    if (!audioModes.includes(audioMode)) {
+      setAudioMode(audioModes[0] ?? "tts");
+    }
+  }, [audioMode, audioModes, kind]);
+
+  useEffect(() => {
+    if (kind !== "audio") return;
+    if (!voiceName) {
+      setVoiceName(voiceOptions[0] ?? "default");
+    }
+  }, [kind, voiceName, voiceOptions]);
+
   async function submit() {
     const clean = prompt.trim();
     if (!clean) {
@@ -71,12 +116,22 @@ export function MediaStudioPage({ kind = "image" }: { kind?: MediaStudioKind }) 
       toast.error("Configure uma API key compatível antes de gerar.");
       return;
     }
+    if (!modelId.trim()) {
+      toast.error("Escolha ou informe um modelo para a geração.");
+      return;
+    }
     setSubmitting(true);
     await new Promise((resolve) => window.setTimeout(resolve, 250));
     setSubmitting(false);
-    toast.info(
-      "Solicitação preparada. O backend de geração de mídia ainda precisa de um endpoint específico para executar este provider.",
-    );
+    const summary = [
+      `Provider: ${activeProvider?.name ?? activeProviderId}`,
+      `Modelo: ${modelId}`,
+      kind === "audio" ? `Modo: ${audioMode}` : null,
+      kind === "audio" ? `Voz: ${voiceName || "default"}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+    toast.info(`Solicitação preparada. ${summary}. O backend de mídia ainda precisa do endpoint específico para executar a geração real.`);
   }
 
   return (
@@ -113,22 +168,77 @@ export function MediaStudioPage({ kind = "image" }: { kind?: MediaStudioKind }) 
         <Surface className="space-y-4">
           <SectionTitle icon={Icon} title="Provider" desc="Lista real baseada nas chaves configuradas." />
           {configuredProviders.length ? (
-            <SelectControl<string>
-              label="Provider"
-              value={providerId || configuredProviders[0].id}
-              onChange={setProviderId}
-              options={configuredProviders.map((provider) => ({
-                value: provider.id,
-                label: provider.name,
-              }))}
-            />
+            <>
+              <SelectControl<string>
+                label="Provider"
+                value={activeProviderId}
+                onChange={(value) => {
+                  setProviderId(value);
+                  const nextModel = getModelOptions(value, providers, models, true)[0]?.id ?? providers[value]?.defaultModel ?? "";
+                  setModelId(nextModel);
+                }}
+                options={configuredProviders.map((provider) => ({
+                  value: provider.id,
+                  label: provider.name,
+                }))}
+              />
+              {modelOptions.length ? (
+                <SelectControl<string>
+                  label="Modelo"
+                  value={modelId || modelOptions[0].id}
+                  onChange={setModelId}
+                  options={modelOptions.map((model) => ({
+                    value: model.id,
+                    label: model.label,
+                  }))}
+                />
+              ) : (
+                <EditableField
+                  label="Modelo"
+                  value={modelId}
+                  onChange={setModelId}
+                  placeholder="Informe o model id"
+                />
+              )}
+              {kind === "audio" ? (
+                <>
+                  <SelectControl<ProviderAudioMode>
+                    label="Modo"
+                    value={audioMode}
+                    onChange={setAudioMode}
+                    options={audioModes.map((mode) => ({
+                      value: mode,
+                      label: mode.toUpperCase(),
+                    }))}
+                  />
+                  {voiceOptions.length ? (
+                    <SelectControl<string>
+                      label="Voz"
+                      value={voiceName || voiceOptions[0]}
+                      onChange={setVoiceName}
+                      options={voiceOptions.map((voice) => ({
+                        value: voice,
+                        label: voice,
+                      }))}
+                    />
+                  ) : (
+                    <EditableField
+                      label="Voz"
+                      value={voiceName}
+                      onChange={setVoiceName}
+                      placeholder="Nome da voz"
+                    />
+                  )}
+                </>
+              ) : null}
+            </>
           ) : (
             <div className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
               Nenhum provider compatível configurado.
             </div>
           )}
           <div className="rounded-2xl bg-white/60 p-4 text-xs font-medium leading-6 text-slate-600">
-            Este módulo evita simular mídia. Quando uma API key compatível estiver configurada e houver endpoint de mídia no backend, a mesma tela executará a geração real.
+            Este módulo evita simular mídia. Agora ele já registra provider, modelo e, no áudio, voz + modo. Quando houver endpoint de mídia no backend, a mesma tela executará a geração real com essa configuração.
           </div>
         </Surface>
       </div>

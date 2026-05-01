@@ -1,9 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Check, ClipboardCopy, FilePlus2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ClipboardCopy, FilePlus2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { normalizeMarkdown } from "@/services/normalize";
 import { cn } from "@/utils/cn";
@@ -162,9 +160,33 @@ export function CodeBlockRenderer({
   onApplyToEditor?: (info: { language: string; code: string }) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [syntax, setSyntax] = useState<SyntaxModule | null>(null);
   const displayLanguage = language || "text";
   const canInsert =
     enableApplyToEditor && code.trim().length > 0 && displayLanguage !== "text";
+  const lines = code.split("\n").length;
+  const sizeKb = (new Blob([code]).size / 1024).toFixed(1);
+
+  useEffect(() => {
+    if (!open || syntax) return;
+    let cancelled = false;
+    void Promise.all([
+      import("react-syntax-highlighter"),
+      import("react-syntax-highlighter/dist/esm/styles/prism"),
+    ]).then(([renderer, styles]) => {
+      if (cancelled) return;
+      setSyntax({
+        Renderer: renderer.Prism as unknown as SyntaxModule["Renderer"],
+        style: (styles as { oneDark?: Record<string, unknown> }).oneDark ?? {},
+      });
+    }).catch(() => {
+      if (!cancelled) setSyntax(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, syntax]);
 
   async function copy() {
     await navigator.clipboard?.writeText(code);
@@ -179,17 +201,30 @@ export function CodeBlockRenderer({
       transition={{ duration: 0.22, ease: "easeOut" }}
       className="not-prose my-3 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.22)]"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-900 px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-2 border-b border-white/10 bg-slate-900 px-3 py-2 text-left"
+      >
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+        )}
         <span className="rounded-full bg-white/8 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-slate-300">
           {displayLanguage}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-400">
+          {lines} linhas · {sizeKb}kb
         </span>
         <div className="flex items-center gap-1.5">
           {canInsert ? (
             <button
               type="button"
-              onClick={() =>
+              onClick={(event) => {
+                event.stopPropagation();
                 onApplyToEditor?.({ language: displayLanguage, code })
-              }
+              }}
               className="inline-flex h-7 items-center gap-1.5 rounded-full bg-emerald-400/12 px-2.5 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-400/20"
               title="Insert into editor"
             >
@@ -199,7 +234,10 @@ export function CodeBlockRenderer({
           ) : null}
           <button
             type="button"
-            onClick={copy}
+            onClick={(event) => {
+              event.stopPropagation();
+              void copy();
+            }}
             className="inline-flex h-7 items-center gap-1.5 rounded-full bg-white/8 px-2.5 text-[11px] font-bold text-slate-200 transition hover:bg-white/14 hover:text-white"
             title="Copy code"
           >
@@ -211,30 +249,52 @@ export function CodeBlockRenderer({
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
-      </div>
-      <SyntaxHighlighter
-        language={displayLanguage}
-        style={oneDark}
-        customStyle={{
-          margin: 0,
-          borderRadius: 0,
-          fontSize: 12,
-          lineHeight: 1.55,
-          padding: "14px 16px",
-          background: "#020617",
-        }}
-        codeTagProps={{
-          style: {
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          },
-        }}
-        wrapLongLines
-      >
-        {code}
-      </SyntaxHighlighter>
+      </button>
+      {open ? (
+        syntax ? (
+          <syntax.Renderer
+            language={displayLanguage}
+            style={syntax.style}
+            customStyle={{
+              margin: 0,
+              borderRadius: 0,
+              fontSize: 12,
+              lineHeight: 1.55,
+              padding: "14px 16px",
+              background: "#020617",
+            }}
+            codeTagProps={{
+              style: {
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              },
+            }}
+            wrapLongLines
+          >
+            {code}
+          </syntax.Renderer>
+        ) : (
+          <pre className="max-h-[420px] overflow-auto bg-[#020617] p-4 text-xs leading-5 text-slate-100">
+            <code>{code}</code>
+          </pre>
+        )
+      ) : null}
     </motion.div>
   );
+}
+
+interface SyntaxRendererProps {
+  language: string;
+  style: Record<string, unknown>;
+  customStyle: Record<string, unknown>;
+  codeTagProps: { style: Record<string, unknown> };
+  wrapLongLines?: boolean;
+  children: string;
+}
+
+interface SyntaxModule {
+  Renderer: ComponentType<SyntaxRendererProps>;
+  style: Record<string, unknown>;
 }
 
 function inferCodeLanguage(code: string): string {

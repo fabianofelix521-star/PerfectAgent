@@ -1,4 +1,9 @@
 import type { ProviderSpec } from "@/types";
+import type { SystemCommand } from "@/core/permissions/PermissionEngine";
+import type {
+  KnowledgeSearchResponse,
+  KnowledgeSourceId,
+} from "@/core/knowledge/types";
 
 export const API_BASE = (() => {
   if (typeof window === "undefined") return "http://127.0.0.1:3336";
@@ -33,6 +38,15 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
+    });
+    return r.json();
+  },
+
+  async runSystemCommand(command: SystemCommand): Promise<{ success: boolean; exitCode: number; stdout: string; stderr: string; durationMs: number }> {
+    const r = await fetch(`${API_BASE}/api/system/command`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ command }),
     });
     return r.json();
   },
@@ -90,6 +104,23 @@ export const api = {
     });
     const data = await r.json();
     return data.models ?? [];
+  },
+
+  async searchKnowledge(payload: {
+    query: string;
+    limit?: number;
+    sources?: Array<Exclude<KnowledgeSourceId, "local">>;
+  }): Promise<KnowledgeSearchResponse> {
+    const r = await fetch(`${API_BASE}/api/knowledge/search`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok || !data?.ok) {
+      throw new Error(data?.error ?? `HTTP ${r.status}`);
+    }
+    return data.data as KnowledgeSearchResponse;
   },
 
   /**

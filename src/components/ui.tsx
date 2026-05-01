@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { BrandLockup } from "@/components/Brand";
 import { cn } from "@/utils/cn";
 
 /* Visual primitives shared across pages — extracted to keep the original look. */
@@ -23,6 +24,12 @@ export function WorkspaceShell({
     <section className="chat-surface app-scrollbar fx-fade-in flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto rounded-[22px] border border-white/70 p-3 sm:p-5 lg:rounded-[28px] lg:p-7">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
+          <BrandLockup
+            compact
+            iconSize={36}
+            caption="Cognitive Control Surface"
+            className="mb-3 w-fit"
+          />
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
             {eyebrow}
           </p>
@@ -186,6 +193,11 @@ export function SelectControl<T extends string>({
   onChange: (v: T) => void;
   options: Array<T | { value: T; label: string }>;
 }) {
+  const safeOptions = options.filter(
+    (opt): opt is T | { value: T; label: string } =>
+      typeof opt === "string" ||
+      Boolean(opt && typeof opt.value === "string" && typeof opt.label === "string"),
+  );
   return (
     <label className="block rounded-[14px] border border-white/70 bg-white/65 px-3 py-2 transition focus-within:border-blue-300 focus-within:bg-white">
       <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -196,7 +208,7 @@ export function SelectControl<T extends string>({
         onChange={(e) => onChange(e.target.value as T)}
         className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none sm:text-sm"
       >
-        {options.map((opt) => {
+        {safeOptions.map((opt) => {
           const v = typeof opt === "string" ? opt : opt.value;
           const l = typeof opt === "string" ? opt : opt.label;
           return (

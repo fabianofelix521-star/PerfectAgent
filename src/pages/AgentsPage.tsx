@@ -35,6 +35,7 @@ import {
 } from "@/stores/config";
 import { api } from "@/services/api";
 import { createAdapter } from "@/services/adapters";
+import { getModelOptions, resolveRuntimeLlmConfig } from "@/services/configSelectors";
 import { toast } from "@/components/Toast";
 import type {
   AgentRuntime,
@@ -69,6 +70,18 @@ const LOCAL_ADAPTER_KINDS = new Set<RuntimeKind>([
   "webcontainer",
   "omega-cognition",
   "morpheus-pantheon",
+  "prometheus",
+  "morpheus-creative",
+  "apollo",
+  "hermes",
+  "athena",
+  "vulcan",
+  "oracle",
+  "sophia",
+  "asclepius",
+  "logos",
+  "prometheus-mind",
+  "nexus-prime",
   "stigmergy-nexus",
   "ephemeral-genesis",
   "supreme-coordinator",
@@ -80,6 +93,9 @@ export function AgentsPage() {
   const removeRuntime = useConfig((s) => s.removeRuntime);
   const setDefaultRuntime = useConfig((s) => s.setDefaultRuntime);
   const providers = useConfig((s) => s.providers);
+  const models = useConfig((s) => s.models);
+  const settings = useConfig((s) => s.settings);
+  const studioSelection = useConfig((s) => s.studioSelection);
 
   const [activeId, setActiveId] = useState<string>(runtimes[0]?.id ?? "");
   const active = runtimes.find((r) => r.id === activeId) ?? runtimes[0];
@@ -94,6 +110,17 @@ export function AgentsPage() {
     () => Object.values(providers).filter((p) => p.configured),
     [providers],
   );
+
+  function resolveRuntimeLlm(runtime: Pick<AgentRuntime, "llmProviderId" | "llmModel">) {
+    return resolveRuntimeLlmConfig(runtime, {
+      providers,
+      models,
+      defaultProviderId: settings.defaultProviderId,
+      defaultModelId: settings.defaultModelId,
+      selectionProviderId: studioSelection.providerId,
+      selectionModel: studioSelection.model,
+    });
+  }
 
   function pushLog(line: string) {
     setLogs((l) =>
@@ -174,9 +201,8 @@ export function AgentsPage() {
       return;
     }
 
-    const llmSpec = active.llmProviderId
-      ? getRuntimeProviderSpec(active.llmProviderId)
-      : undefined;
+    const resolvedLlm = resolveRuntimeLlm(active);
+    const llmSpec = getRuntimeProviderSpec(resolvedLlm.providerId);
 
     if ((active.kind ?? "langgraph-dag") !== "langgraph-dag") {
       void runAdapterRuntime(active, input);
@@ -185,9 +211,9 @@ export function AgentsPage() {
 
     if (
       active.nodes.some((n) => n.type === "llm") &&
-      (!llmSpec || !active.llmModel)
+      (!llmSpec || !resolvedLlm.modelId)
     ) {
-      toast.error("Configure provedor + modelo para nós LLM.");
+      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
       return;
     }
 
@@ -207,7 +233,7 @@ export function AgentsPage() {
           : [active.nodes.at(-1)?.id].filter(Boolean),
         input,
         llmSpec,
-        llmModel: active.llmModel,
+        llmModel: resolvedLlm.modelId,
       },
       onEvent: (name, data) => {
         const event = asEventRecord(data);
@@ -271,13 +297,12 @@ export function AgentsPage() {
     );
   }
 
-  const modelOptions = (() => {
-    if (!active.llmProviderId) return [];
-    const cfg = providers[active.llmProviderId];
-    if (!cfg) return [];
-    if (cfg.fetchedModels?.length) return cfg.fetchedModels.map((m) => m.id);
-    return cfg.defaultModel ? [cfg.defaultModel] : [];
-  })();
+  const resolvedLlm = resolveRuntimeLlm(active);
+  const modelOptions = getModelOptions(
+    resolvedLlm.providerId,
+    providers,
+    models,
+  ).map((model) => model.id);
 
   return (
     <WorkspaceShell
@@ -422,7 +447,12 @@ export function AgentsPage() {
                 })
               }
               options={[
-                { value: "", label: "(nenhum)" },
+                {
+                  value: "",
+                  label: resolvedLlm.providerId
+                    ? `(usar IA do app: ${providers[resolvedLlm.providerId]?.name ?? resolvedLlm.providerId})`
+                    : "(usar IA padrão do app)",
+                },
                 ...configuredProviders.map((p) => ({
                   value: p.id,
                   label: p.name,
@@ -433,9 +463,15 @@ export function AgentsPage() {
               label="Modelo"
               value={active.llmModel ?? ""}
               onChange={(v) => patchActive({ llmModel: v || undefined })}
-              options={
-                modelOptions.length ? modelOptions : ["(configure provedor)"]
-              }
+              options={[
+                {
+                  value: "",
+                  label: resolvedLlm.modelId
+                    ? `(automático: ${resolvedLlm.modelId})`
+                    : "(automático pelo app)",
+                },
+                ...modelOptions,
+              ]}
             />
           </div>
 
@@ -685,16 +721,13 @@ export function AgentsPage() {
     runtime: AgentRuntime,
     input: Record<string, unknown>,
   ) {
-    const providerId = runtime.llmProviderId ?? configuredProviders[0]?.id;
-    const provider = providerId ? providers[providerId] : undefined;
+    const resolvedLlm = resolveRuntimeLlm(runtime);
+    const providerId = resolvedLlm.providerId;
     const spec = providerId ? getRuntimeProviderSpec(providerId) : undefined;
-    const model =
-      runtime.llmModel ??
-      provider?.defaultModel ??
-      provider?.fetchedModels?.[0]?.id;
+    const model = resolvedLlm.modelId;
 
     if (!spec || !model) {
-      toast.error("Configure um provedor e modelo para executar este runtime.");
+      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
       return;
     }
 
@@ -919,6 +952,66 @@ const RUNTIME_KIND_OPTIONS: Array<{
     desc: "Leiloeiro local com 12 agentes especialistas que enriquecem o contexto do LLM.",
   },
   {
+    value: "prometheus",
+    label: "Prometheus · Predictive Swarm",
+    desc: "WorldModels probabilísticos, consenso bayesiano e decisões preditivas para mercados/DeFi.",
+  },
+  {
+    value: "morpheus-creative",
+    label: "Morpheus · Creative Consciousness",
+    desc: "Campo estético persistente, crítica cruzada e coerência emergente para jogos/arte.",
+  },
+  {
+    value: "apollo",
+    label: "Apollo · Medical Grand Round",
+    desc: "Hipóteses bayesianas, pedidos de evidência e debate de especialistas médicos.",
+  },
+  {
+    value: "hermes",
+    label: "Hermes · Growth Swarm",
+    desc: "Memória de audiência, predição de ressonância e aprendizado por campanha.",
+  },
+  {
+    value: "athena",
+    label: "Athena · Epistemic Web",
+    desc: "Pesquisa com grafo de claims, proveniência, contradições e gaps de conhecimento.",
+  },
+  {
+    value: "vulcan",
+    label: "Vulcan · Living Codebase",
+    desc: "Swarm autônomo de engenharia para arquitetura, segurança, performance e testes.",
+  },
+  {
+    value: "oracle",
+    label: "Oracle · Strategic Intelligence",
+    desc: "Cenários adversariais, sinais fracos, red team e inteligência competitiva.",
+  },
+  {
+    value: "sophia",
+    label: "Sophia · Wisdom Field",
+    desc: "Estudos sagrados comparados, arquétipos universais e síntese entre tradições.",
+  },
+  {
+    value: "asclepius",
+    label: "Asclepius · Integrative Healing",
+    desc: "Mecanismos biológicos, tradições médicas antigas e PubMed leve para hipóteses de cura educacionais.",
+  },
+  {
+    value: "logos",
+    label: "Logos · Metaphysical Architecture",
+    desc: "Ontologia, tradições iniciáticas e autoaperfeiçoamento disciplinado com filtro anti-especulação.",
+  },
+  {
+    value: "prometheus-mind",
+    label: "Prometheus-Mind · Cognitive Optimization",
+    desc: "Neurociência aplicada, performance cognitiva e loops de foco/recuperação mensuráveis.",
+  },
+  {
+    value: "nexus-prime",
+    label: "Nexus Prime · Meta-Runtime",
+    desc: "Parlamento cognitivo que orquestra todos os runtimes especializados.",
+  },
+  {
     value: "stigmergy-nexus",
     label: "Stigmergy Vectorial Nexus",
     desc: "Runtime reativo baseado em estado compartilhado vetorial e cascata Processor → Reviewer.",
@@ -963,11 +1056,26 @@ function RuntimeKindBlock({
   patchActive: (p: Partial<AgentRuntime>) => void;
 }) {
   const setRuntimeTest = useConfig((s) => s.setRuntimeTest);
+  const providers = useConfig((s) => s.providers);
+  const models = useConfig((s) => s.models);
+  const settings = useConfig((s) => s.settings);
+  const studioSelection = useConfig((s) => s.studioSelection);
   const [testing, setTesting] = useState(false);
   const [testingCode, setTestingCode] = useState(false);
   const kind: RuntimeKind = active.kind ?? "langgraph-dag";
   const caps: RuntimeCapabilities =
     active.capabilities ?? defaultCapabilitiesFor(kind);
+
+  function resolveActiveLlm() {
+    return resolveRuntimeLlmConfig(active, {
+      providers,
+      models,
+      defaultProviderId: settings.defaultProviderId,
+      defaultModelId: settings.defaultModelId,
+      selectionProviderId: studioSelection.providerId,
+      selectionModel: studioSelection.model,
+    });
+  }
 
   function setKind(k: RuntimeKind) {
     patchActive({ kind: k, capabilities: defaultCapabilitiesFor(k) });
@@ -1028,30 +1136,11 @@ function RuntimeKindBlock({
     setTestingCode(true);
     try {
       const adapter = createAdapter(active);
-      const cfg = useConfig.getState();
-      const provId =
-        active.llmProviderId ??
-        cfg.settings.defaultProviderId ??
-        cfg.studioSelection.providerId ??
-        Object.values(cfg.providers).find((provider) => provider.configured)?.id;
-      const provider = provId ? cfg.providers[provId] : undefined;
-      const spec = provId ? getRuntimeProviderSpec(provId) : undefined;
-      const settingsModel =
-        provId && cfg.settings.defaultProviderId === provId
-          ? cfg.settings.defaultModelId
-          : undefined;
-      const studioModel =
-        provId && cfg.studioSelection.providerId === provId
-          ? cfg.studioSelection.model
-          : undefined;
-      const model =
-        active.llmModel ??
-        settingsModel ??
-        studioModel ??
-        provider?.defaultModel ??
-        provider?.fetchedModels?.[0]?.id;
+      const resolvedLlm = resolveActiveLlm();
+      const spec = getRuntimeProviderSpec(resolvedLlm.providerId);
+      const model = resolvedLlm.modelId;
       if (!spec || !model) {
-        toast.error("Configure o provedor e modelo deste runtime primeiro.");
+        toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
         return;
       }
       const r = await adapter.testCodeGeneration({ spec, model });

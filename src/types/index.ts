@@ -13,6 +13,7 @@ export type ProviderShape =
   | "ollama"
   | "custom";
 export type AuthMode = "bearer" | "header" | "query" | "none";
+export type ProviderAudioMode = "tts" | "stt" | "realtime";
 
 export interface ProviderSpec {
   shape: ProviderShape;
@@ -22,6 +23,7 @@ export interface ProviderSpec {
   authHeaderName?: string;
   extraHeaders?: Record<string, string>;
   pathOverrides?: { chat?: string; models?: string };
+  variables?: Record<string, string>;
 }
 
 /** A registered provider in the user's settings. */
@@ -66,6 +68,8 @@ export interface ProviderPreset {
   extraHeaders?: Record<string, string>;
   envVar?: string;
   presetModels?: string[];
+  presetVoices?: string[];
+  audioModes?: ProviderAudioMode[];
   notes?: string;
   pathOverrides?: { chat?: string; models?: string };
   /** fields the user must fill in besides the API key */
@@ -93,6 +97,7 @@ export interface ChatMessageV2 {
   runtimeId?: string;
   streaming?: boolean;
   error?: string;
+  generatedFiles?: ProjectFile[];
 }
 
 export interface RuntimeNode {
@@ -148,6 +153,18 @@ export type RuntimeKind =
   | "webcontainer"
   | "omega-cognition" // OmegaCognitionEngine — 8-layer cognitive runtime overlay
   | "morpheus-pantheon" // Morpheus auctioneer + 12-agent Pantheon (router enrichment)
+  | "prometheus" // Predictive crypto/market swarm
+  | "morpheus-creative" // Aesthetic-field creative/game swarm
+  | "apollo" // Bayesian medical diagnostic swarm
+  | "hermes" // Marketing/growth audience-memory swarm
+  | "athena" // Epistemic-web research swarm
+  | "vulcan" // Autonomous software engineering swarm
+  | "oracle" // Strategic intelligence swarm
+  | "sophia" // Sacred-text and cross-tradition wisdom runtime
+  | "asclepius" // Healing and PubMed-connected mechanism runtime
+  | "logos" // Metaphysical architecture and initiatory-history runtime
+  | "prometheus-mind" // Neuroscience and cognitive optimization runtime
+  | "nexus-prime" // Meta-runtime orchestrating all cognitive runtimes
   | "stigmergy-nexus" // Vectorial State Space with reactive triggers
   | "ephemeral-genesis" // Just-in-time micro-agent compilation
   | "supreme-coordinator" // Hierarchical swarm: Strategic Layer + 15 Domain Supervisors + Infra
@@ -282,11 +299,16 @@ export interface Integration {
   kind:
     | "webhook"
     | "slack"
+    | "telegram"
+    | "whatsapp"
+    | "discord"
     | "github"
     | "stripe"
     | "supabase"
     | "notion"
     | "google"
+    | "airtable"
+    | "linear"
     | "custom";
   url?: string;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

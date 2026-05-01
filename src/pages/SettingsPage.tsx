@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Brain, KeyRound, Settings as SettingsIcon, Plug, Palette, ShieldCheck,
-  Plus, Trash2, RefreshCw, Download, Upload, Check, AlertCircle,
+  Plus, Trash2, RefreshCw, Download, Upload, Check, AlertCircle, Database, Route, BarChart3,
 } from "lucide-react";
 import { WorkspaceShell, Surface, SectionTitle, EditableField, SelectControl, Modal, Spinner, ToggleRow, StatusBadge, Tag } from "@/components/ui";
-import { useConfig, ensurePresetsRegistered } from "@/stores/config";
-import { PROVIDER_PRESETS, presetById } from "@/services/providers";
+import {
+  useConfig,
+  ensurePresetsRegistered,
+  createProviderConfigFromPreset,
+  APP_BRAND_SLUG,
+} from "@/stores/config";
+import {
+  PROVIDER_PRESETS,
+  presetById,
+  resolveProviderSpec,
+} from "@/services/providers";
 import { api } from "@/services/api";
 import { deobfuscate } from "@/services/storage";
 import { getModelOptions, providerIsUsable } from "@/services/configSelectors";
@@ -14,7 +23,15 @@ import { BackendStatusBadge } from "@/components/BackendStatus";
 import type { ModelConfig, ProviderConfig } from "@/types";
 import { cn } from "@/utils/cn";
 
-type Tab = "models" | "general" | "security" | "appearance";
+type Tab =
+  | "models"
+  | "general"
+  | "security"
+  | "appearance"
+  | "memory"
+  | "model-router"
+  | "usage"
+  | "integrations";
 
 export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -32,6 +49,10 @@ export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
       <div className="mb-5 flex flex-wrap gap-2 rounded-full bg-white/50 p-1 shadow-inner">
         {[
           { id: "models" as const, label: "Modelos", icon: Brain },
+          { id: "memory" as const, label: "Memória", icon: Database },
+          { id: "model-router" as const, label: "Router", icon: Route },
+          { id: "usage" as const, label: "Uso", icon: BarChart3 },
+          { id: "integrations" as const, label: "Atalhos", icon: Plug },
           { id: "general" as const, label: "Geral", icon: SettingsIcon },
           { id: "security" as const, label: "Segurança", icon: ShieldCheck },
           { id: "appearance" as const, label: "Aparência", icon: Palette },
@@ -48,10 +69,150 @@ export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
       </div>
 
       {tab === "models" && <ModelsTab />}
+      {tab === "memory" && <MemoryTab />}
+      {tab === "model-router" && <ModelRouterTab />}
+      {tab === "usage" && <UsageTab />}
+      {tab === "integrations" && <SettingsShortcutsTab />}
       {tab === "general" && <GeneralTab />}
       {tab === "security" && <SecurityTab />}
       {tab === "appearance" && <AppearanceTab />}
     </WorkspaceShell>
+  );
+}
+
+function MemoryTab() {
+  const rawMemory = useConfig((s) => s.settings.memorySettings);
+  const memorySettings = rawMemory ?? { provider: "local" as const, embeddingModel: "local" as const };
+  const setSettings = useConfig((s) => s.setSettings);
+
+  return (
+    <Surface className="space-y-4">
+      <SectionTitle icon={Database} title="Sistema de Memória" desc="Configure provider vetorial, embeddings e persistência cognitiva." />
+      <SelectControl
+        label="Vector Database"
+        value={memorySettings.provider}
+        onChange={(provider) =>
+          setSettings({ memorySettings: { ...memorySettings, provider: provider as typeof memorySettings.provider } })
+        }
+        options={[
+          { value: "local", label: "Local (IndexedDB)" },
+          { value: "pinecone", label: "Pinecone" },
+          { value: "chroma", label: "ChromaDB" },
+          { value: "supabase", label: "Supabase" },
+        ]}
+      />
+      <SelectControl
+        label="Modelo de Embedding"
+        value={memorySettings.embeddingModel}
+        onChange={(embeddingModel) =>
+          setSettings({
+            memorySettings: {
+              ...memorySettings,
+              embeddingModel: embeddingModel as typeof memorySettings.embeddingModel,
+            },
+          })
+        }
+        options={[
+          { value: "local", label: "Local (offline)" },
+          { value: "openai", label: "OpenAI" },
+          { value: "cohere", label: "Cohere" },
+        ]}
+      />
+      <div className="rounded-2xl bg-white/60 p-4 text-xs font-medium leading-6 text-slate-600">
+        Memória local opera offline. Providers externos exigem chave/API e serão usados apenas quando configurados.
+      </div>
+    </Surface>
+  );
+}
+
+function ModelRouterTab() {
+  const modelRouter = useConfig((s) => s.settings.modelRouter);
+  const setSettings = useConfig((s) => s.setSettings);
+
+  return (
+    <Surface className="space-y-4">
+      <SectionTitle icon={Route} title="Model Router" desc="Roteamento automático para custo, velocidade e qualidade." />
+      <ToggleRow
+        title="Ativar roteador"
+        desc="Seleciona automaticamente o melhor modelo por tarefa."
+        active={modelRouter.enabled}
+        onToggle={() => setSettings({ modelRouter: { ...modelRouter, enabled: !modelRouter.enabled } })}
+      />
+      <ToggleRow
+        title="Priorizar custo"
+        desc="Prefere modelos econômicos quando possível."
+        active={modelRouter.preferCost}
+        onToggle={() => setSettings({ modelRouter: { ...modelRouter, preferCost: !modelRouter.preferCost } })}
+      />
+      <ToggleRow
+        title="Priorizar velocidade"
+        desc="Prefere modelos de baixa latência para tarefas simples."
+        active={modelRouter.preferSpeed}
+        onToggle={() => setSettings({ modelRouter: { ...modelRouter, preferSpeed: !modelRouter.preferSpeed } })}
+      />
+      <ToggleRow
+        title="Auto-route de visão"
+        desc="Quando houver imagem, direciona para modelos multimodais."
+        active={modelRouter.allowVisionAutoRoute}
+        onToggle={() =>
+          setSettings({
+            modelRouter: {
+              ...modelRouter,
+              allowVisionAutoRoute: !modelRouter.allowVisionAutoRoute,
+            },
+          })
+        }
+      />
+    </Surface>
+  );
+}
+
+function UsageTab() {
+  const chatThreads = useConfig((s) => s.chatThreads);
+  const skills = useConfig((s) => s.skills);
+  const integrations = useConfig((s) => s.integrations);
+  const mcpServers = useConfig((s) => s.mcpServers);
+
+  const stats = {
+    messages: chatThreads.reduce((sum, item) => sum + item.messages.length, 0),
+    skillsEnabled: skills.filter((item) => item.enabled).length,
+    integrationsConnected: integrations.filter((item) => item.connected).length,
+    mcpConnected: mcpServers.filter((item) => item.lastTest?.ok).length,
+  };
+
+  return (
+    <Surface className="space-y-4">
+      <SectionTitle icon={BarChart3} title="Uso e Telemetria Local" desc="Indicadores de utilização do sistema agêntico." />
+      <div className="grid gap-3 md:grid-cols-2">
+        <MetricCard label="Mensagens" value={stats.messages} />
+        <MetricCard label="Skills ativas" value={stats.skillsEnabled} />
+        <MetricCard label="Integrações conectadas" value={stats.integrationsConnected} />
+        <MetricCard label="MCP conectados" value={stats.mcpConnected} />
+      </div>
+    </Surface>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/60 p-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function SettingsShortcutsTab() {
+  return (
+    <Surface className="space-y-4">
+      <SectionTitle icon={Plug} title="Atalhos de Configuração" desc="Acesse rapidamente as novas áreas do ecossistema." />
+      <div className="grid gap-3 md:grid-cols-2">
+        <a className="rounded-2xl border border-white/70 bg-white/60 p-4 font-semibold text-slate-900" href="/settings/mcp">/settings/mcp</a>
+        <a className="rounded-2xl border border-white/70 bg-white/60 p-4 font-semibold text-slate-900" href="/settings/integrations">/settings/integrations</a>
+        <a className="rounded-2xl border border-white/70 bg-white/60 p-4 font-semibold text-slate-900" href="/settings/skills">/settings/skills</a>
+        <a className="rounded-2xl border border-white/70 bg-white/60 p-4 font-semibold text-slate-900" href="/settings/export">/settings/export</a>
+      </div>
+    </Surface>
   );
 }
 
@@ -64,16 +225,27 @@ function ModelsTab() {
   const settings = useConfig((s) => s.settings);
   const setSettings = useConfig((s) => s.setSettings);
   const setProviderEnabled = useConfig((s) => s.setProviderEnabled);
+  const removeProvider = useConfig((s) => s.removeProvider);
+  const upsertProvider = useConfig((s) => s.upsertProvider);
   const setModelEnabled = useConfig((s) => s.setModelEnabled);
   const upsertModel = useConfig((s) => s.upsertModel);
   const removeModel = useConfig((s) => s.removeModel);
   const setDefaultRuntime = useConfig((s) => s.setDefaultRuntime);
   const [editingId, setEditingId] = useState<string | undefined>();
+  const [newProviderPresetId, setNewProviderPresetId] = useState("custom");
   const [newModelProvider, setNewModelProvider] = useState("");
   const [newModelId, setNewModelId] = useState("");
 
   const sorted = useMemo(() => {
-    return PROVIDER_PRESETS.map((p) => providers[p.id]).filter(Boolean) as ProviderConfig[];
+    const order = new Map(PROVIDER_PRESETS.map((preset, index) => [preset.id, index]));
+    return Object.values(providers).sort((left, right) => {
+      const leftOrder = order.get(left.presetId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = order.get(right.presetId) ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      if (left.id === left.presetId && right.id !== right.presetId) return -1;
+      if (left.id !== left.presetId && right.id === right.presetId) return 1;
+      return left.name.localeCompare(right.name);
+    });
   }, [providers]);
 
   const providerOptions = sorted.map((p) => ({ value: p.id, label: `${p.name}${providerIsUsable(p) ? "" : " (disabled)"}` }));
@@ -95,13 +267,60 @@ function ModelsTab() {
     toast.success(`Modelo ${id} adicionado.`);
   }
 
+  function nextProviderInstanceId(presetId: string) {
+    if (!providers[presetId]) return presetId;
+    let index = 2;
+    while (providers[`${presetId}-${index}`]) index += 1;
+    return `${presetId}-${index}`;
+  }
+
+  function addProviderInstance() {
+    const preset = presetById(newProviderPresetId);
+    if (!preset) {
+      toast.error("Preset de provider inválido.");
+      return;
+    }
+    const id = nextProviderInstanceId(preset.id);
+    const next = createProviderConfigFromPreset(preset, {
+      id,
+      name: id === preset.id ? preset.name : `${preset.name} ${id.split("-").at(-1)}`,
+    });
+    upsertProvider(next);
+    setEditingId(next.id);
+    toast.success(`${next.name} adicionado.`);
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <Surface>
         <SectionTitle icon={Brain} title="Provedores de IA" desc="Configure baseURL, chave de API, busque modelos e teste a conexão." />
+        <div className="mt-4 grid gap-3 rounded-[20px] border border-white/70 bg-white/55 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <SelectControl<string>
+            label="Adicionar provider"
+            value={newProviderPresetId}
+            onChange={setNewProviderPresetId}
+            options={PROVIDER_PRESETS.map((preset) => ({
+              value: preset.id,
+              label: preset.name,
+            }))}
+          />
+          <button
+            type="button"
+            onClick={addProviderInstance}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white"
+          >
+            <Plus className="h-4 w-4" />Adicionar instância
+          </button>
+        </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {sorted.map((p) => (
-            <ProviderCard key={p.id} cfg={p} onToggle={() => setProviderEnabled(p.id, !p.enabled)} onEdit={() => setEditingId(p.id)} />
+            <ProviderCard
+              key={p.id}
+              cfg={p}
+              onToggle={() => setProviderEnabled(p.id, !p.enabled)}
+              onEdit={() => setEditingId(p.id)}
+              onRemove={p.id !== p.presetId ? () => removeProvider(p.id) : undefined}
+            />
           ))}
         </div>
       </Surface>
@@ -180,7 +399,17 @@ function ModelsTab() {
   );
 }
 
-function ProviderCard({ cfg, onToggle, onEdit }: { cfg: ProviderConfig; onToggle: () => void; onEdit: () => void }) {
+function ProviderCard({
+  cfg,
+  onToggle,
+  onEdit,
+  onRemove,
+}: {
+  cfg: ProviderConfig;
+  onToggle: () => void;
+  onEdit: () => void;
+  onRemove?: () => void;
+}) {
   return (
     <div className="rounded-[24px] border border-white/70 bg-white/55 p-5">
       <div className="flex items-start justify-between gap-3">
@@ -201,6 +430,7 @@ function ProviderCard({ cfg, onToggle, onEdit }: { cfg: ProviderConfig; onToggle
       <div className="mt-3 flex flex-wrap gap-2">
         <Tag>{cfg.spec.shape}</Tag>
         <Tag>{cfg.spec.authMode ?? "none"}</Tag>
+        {cfg.id !== cfg.presetId ? <Tag>custom instance</Tag> : null}
         {cfg.defaultModel ? <Tag>{cfg.defaultModel}</Tag> : null}
         {cfg.fetchedModels?.length ? <Tag>{cfg.fetchedModels.length} models</Tag> : null}
       </div>
@@ -211,9 +441,20 @@ function ProviderCard({ cfg, onToggle, onEdit }: { cfg: ProviderConfig; onToggle
           {cfg.lastTest.ok ? `OK ${cfg.lastTest.latencyMs}ms` : (cfg.lastTest.error ?? `HTTP ${cfg.lastTest.status}`)}
         </div>
       ) : null}
-      <button onClick={onEdit} className="mt-4 w-full rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white">
-        Configurar
-      </button>
+      <div className="mt-4 flex gap-2">
+        <button onClick={onEdit} className="flex-1 rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white">
+          Configurar
+        </button>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded-full bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700"
+          >
+            Remover
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -224,22 +465,24 @@ function ProviderEditor({ providerId, onClose }: { providerId?: string; onClose:
   const setProviderTest = useConfig((s) => s.setProviderTest);
   const setProviderModels = useConfig((s) => s.setProviderModels);
   const cfg = providerId ? providers[providerId] : undefined;
-  const preset = providerId ? presetById(providerId) : undefined;
+  const preset = cfg ? presetById(cfg.presetId) : undefined;
 
+  const [name, setName] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
-  const [extras, setExtras] = useState<Record<string, string>>({});
+  const [variables, setVariables] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState(true);
   const [testing, setTesting] = useState(false);
   const [fetching, setFetching] = useState(false);
 
   useEffect(() => {
     if (!cfg) return;
+    setName(cfg.name);
     setApiKey(cfg.spec.apiKey ? deobfuscate(cfg.spec.apiKey) : "");
-    setBaseUrl(cfg.spec.baseUrl);
+    setBaseUrl(cfg.baseUrl || cfg.spec.baseUrl);
     setDefaultModel(cfg.defaultModel ?? preset?.presetModels?.[0] ?? "");
-    setExtras((cfg.spec.extraHeaders ?? {}) as Record<string, string>);
+    setVariables(cfg.spec.variables ?? {});
     setEnabled(cfg.enabled);
   }, [providerId, cfg, preset]);
 
@@ -248,14 +491,12 @@ function ProviderEditor({ providerId, onClose }: { providerId?: string; onClose:
   const modelOptions = (cfg.fetchedModels?.length ? cfg.fetchedModels.map((m) => m.id) : preset.presetModels ?? []);
 
   function buildSpec() {
-    let url = baseUrl;
-    // resolve {resource} for azure
-    for (const k of Object.keys(extras)) url = url.replaceAll(`{${k}}`, extras[k] ?? "");
-    return {
+    return resolveProviderSpec({
       ...cfg!.spec,
-      baseUrl: url,
+      baseUrl,
       apiKey: apiKey || undefined,
-    };
+      variables,
+    });
   }
 
   async function handleTest() {
@@ -285,14 +526,20 @@ function ProviderEditor({ providerId, onClose }: { providerId?: string; onClose:
   function handleSave() {
     upsertProvider({
       ...cfg!,
+      name: name.trim() || cfg!.name,
       baseUrl,
       apiKey: apiKey || undefined,
       enabled,
-      spec: { ...cfg!.spec, baseUrl, apiKey: apiKey || undefined },
+      spec: {
+        ...cfg!.spec,
+        baseUrl,
+        apiKey: apiKey || undefined,
+        variables,
+      },
       defaultModel: defaultModel || undefined,
       configured: Boolean(apiKey || cfg!.spec.authMode === "none"),
     });
-    toast.success(`${cfg!.name} salvo.`);
+    toast.success(`${name.trim() || cfg!.name} salvo.`);
     onClose();
   }
 
@@ -308,6 +555,7 @@ function ProviderEditor({ providerId, onClose }: { providerId?: string; onClose:
         {preset.notes ? (
           <div className="rounded-xl bg-slate-50 p-3 text-xs font-medium text-slate-600">{preset.notes}</div>
         ) : null}
+        <EditableField label="Provider name" value={name} onChange={setName} />
         <EditableField label="Base URL" value={baseUrl} onChange={setBaseUrl} />
         {preset.authMode !== "none" && (
           <EditableField label={preset.envVar ?? "API Key"} value={apiKey} onChange={setApiKey} type="password" placeholder="sk-..." />
@@ -315,8 +563,8 @@ function ProviderEditor({ providerId, onClose }: { providerId?: string; onClose:
         {(preset.extraFields ?? []).map((f) => (
           <EditableField key={f.key}
             label={f.label}
-            value={extras[f.key] ?? ""}
-            onChange={(v) => setExtras((cur) => ({ ...cur, [f.key]: v }))}
+            value={variables[f.key] ?? ""}
+            onChange={(v) => setVariables((cur) => ({ ...cur, [f.key]: v }))}
             type={f.type ?? "text"}
             placeholder={f.placeholder}
           />
@@ -361,7 +609,7 @@ function GeneralTab() {
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `perfectagent-config-${Date.now()}.json`;
+    a.href = url; a.download = `${APP_BRAND_SLUG}-config-${Date.now()}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     toast.success("Configuração exportada.");
@@ -475,6 +723,16 @@ function AppearanceTab() {
   return (
     <Surface className="space-y-5">
       <SectionTitle icon={Palette} title="Aparência" desc="Cores, fontes e tema do editor." />
+      <SelectControl<"light" | "dark" | "system">
+        label="Tema"
+        value={settings.theme ?? "light"}
+        onChange={(v) => setSettings({ theme: v })}
+        options={[
+          { value: "light", label: "☀️  Claro" },
+          { value: "dark", label: "🌙  Escuro" },
+          { value: "system", label: "⚙️  Sistema (automático)" },
+        ]}
+      />
       <div className="rounded-[20px] border border-white/70 bg-white/60 p-4">
         <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Cor primária</span>
         <div className="flex items-center gap-3">

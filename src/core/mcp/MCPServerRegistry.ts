@@ -1,0 +1,212 @@
+import type { MCPServerDefinition } from "@/core/mcp/types";
+
+export const MCP_CATALOG: MCPServerDefinition[] = [
+  {
+    id: "filesystem",
+    name: "File System",
+    description: "Ler, escrever e gerenciar arquivos do sistema",
+    category: "productivity",
+    icon: "📁",
+    package: "@modelcontextprotocol/server-filesystem",
+    configSchema: {
+      allowedPaths: {
+        type: "array",
+        items: { type: "string" },
+        description: "Pastas permitidas",
+      },
+    },
+    tools: ["read_file", "write_file", "list_directory", "create_directory", "delete_file", "move_file"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "memory",
+    name: "Memory (Anthropic)",
+    description: "Memoria persistente oficial da Anthropic",
+    category: "ai",
+    icon: "🧠",
+    package: "@modelcontextprotocol/server-memory",
+    tools: ["create_entities", "create_relations", "search_nodes", "add_observations", "delete_entities", "read_graph"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "sequential-thinking",
+    name: "Sequential Thinking",
+    description: "Raciocinio step-by-step para problemas complexos",
+    category: "ai",
+    icon: "🧩",
+    package: "@modelcontextprotocol/server-sequential-thinking",
+    tools: ["sequentialthinking"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "brave-search",
+    name: "Brave Search",
+    description: "Busca real na web com resultados atualizados",
+    category: "search",
+    icon: "🔍",
+    package: "@modelcontextprotocol/server-brave-search",
+    requiresApiKey: true,
+    apiKeyName: "BRAVE_API_KEY",
+    tools: ["brave_web_search", "brave_local_search"],
+    docsUrl: "https://api.search.brave.com",
+  },
+  {
+    id: "fetch",
+    name: "Fetch",
+    description: "Requests HTTP e scraping de paginas web",
+    category: "web",
+    icon: "🌐",
+    package: "@modelcontextprotocol/server-fetch",
+    tools: ["fetch"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "puppeteer",
+    name: "Puppeteer Browser",
+    description: "Controlar browser e screenshots",
+    category: "web",
+    icon: "🤖",
+    package: "@modelcontextprotocol/server-puppeteer",
+    tools: ["puppeteer_navigate", "puppeteer_screenshot", "puppeteer_click", "puppeteer_fill", "puppeteer_evaluate"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    description: "Repos, issues, PRs, commits e busca de codigo",
+    category: "development",
+    icon: "🐙",
+    package: "@modelcontextprotocol/server-github",
+    requiresApiKey: true,
+    apiKeyName: "GITHUB_TOKEN",
+    tools: ["create_repository", "create_issue", "create_pull_request", "push_files", "search_code", "get_file_contents", "list_commits", "create_branch", "fork_repository"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "gitlab",
+    name: "GitLab",
+    description: "GitLab repos, MRs e issues",
+    category: "development",
+    icon: "🦊",
+    package: "@modelcontextprotocol/server-gitlab",
+    requiresApiKey: true,
+    apiKeyName: "GITLAB_TOKEN",
+    tools: ["create_project", "create_issue", "create_merge_request", "list_projects", "get_file", "create_file"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "git",
+    name: "Git Local",
+    description: "Operacoes Git no repositorio local",
+    category: "development",
+    icon: "🌿",
+    package: "@modelcontextprotocol/server-git",
+    tools: ["git_status", "git_diff", "git_commit", "git_log", "git_create_branch", "git_checkout", "git_add"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "postgres",
+    name: "PostgreSQL",
+    description: "Queries e schema inspection",
+    category: "database",
+    icon: "🐘",
+    package: "@modelcontextprotocol/server-postgres",
+    requiresConfig: true,
+    configSchema: {
+      connectionString: {
+        type: "string",
+        description: "postgres://user:pass@host:5432/db",
+      },
+    },
+    tools: ["query", "list_tables", "describe_table"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "sqlite",
+    name: "SQLite",
+    description: "Banco de dados SQLite local",
+    category: "database",
+    icon: "🗄️",
+    package: "@modelcontextprotocol/server-sqlite",
+    tools: ["read_query", "write_query", "create_table", "list_tables", "describe_table"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    description: "Mensagens, canais e historico",
+    category: "communication",
+    icon: "💬",
+    package: "@modelcontextprotocol/server-slack",
+    requiresApiKey: true,
+    apiKeyName: "SLACK_BOT_TOKEN",
+    tools: ["slack_post_message", "slack_list_channels", "slack_get_channel_history", "slack_reply_to_thread", "slack_add_reaction", "slack_list_users"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "google-maps",
+    name: "Google Maps",
+    description: "Geocodificacao, rotas e lugares",
+    category: "location",
+    icon: "🗺️",
+    package: "@modelcontextprotocol/server-google-maps",
+    requiresApiKey: true,
+    apiKeyName: "GOOGLE_MAPS_API_KEY",
+    tools: ["maps_geocode", "maps_reverse_geocode", "maps_search_places", "maps_get_directions", "maps_place_details"],
+    docsUrl: "https://github.com/modelcontextprotocol/servers",
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    description: "Criar, ler e atualizar paginas e databases do Notion",
+    category: "productivity",
+    icon: "📝",
+    package: "notion-mcp-server",
+    requiresApiKey: true,
+    apiKeyName: "NOTION_API_KEY",
+    tools: ["notion_search", "notion_create_page", "notion_update_page", "notion_query_database", "notion_add_comment"],
+    docsUrl: "https://developers.notion.com",
+  },
+  {
+    id: "everart",
+    name: "EverArt Image Gen",
+    description: "Gerar imagens com IA via EverArt",
+    category: "media",
+    icon: "🎨",
+    package: "@modelcontextprotocol/server-everart",
+    requiresApiKey: true,
+    apiKeyName: "EVERART_API_KEY",
+    tools: ["generate_image"],
+    docsUrl: "https://www.everart.ai",
+  },
+  {
+    id: "custom",
+    name: "Servidor Customizado",
+    description: "Conectar qualquer servidor MCP customizado via URL",
+    category: "custom",
+    icon: "⚙️",
+    package: "custom",
+    configSchema: {
+      url: { type: "string", description: "URL do servidor MCP" },
+      authToken: { type: "string", description: "Token de autenticacao" },
+    },
+    tools: [],
+    docsUrl: "https://modelcontextprotocol.io",
+  },
+];
+
+export class MCPServerRegistry {
+  getAll(): MCPServerDefinition[] {
+    return MCP_CATALOG;
+  }
+
+  findById(id: string): MCPServerDefinition | undefined {
+    return MCP_CATALOG.find((item) => item.id === id);
+  }
+
+  findByCategory(category: MCPServerDefinition["category"]): MCPServerDefinition[] {
+    return MCP_CATALOG.filter((item) => item.category === category);
+  }
+}
+
+export const mcpServerRegistry = new MCPServerRegistry();

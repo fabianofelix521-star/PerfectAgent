@@ -13,10 +13,22 @@
  */
 import express from "express";
 import cors from "cors";
-import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
+import { spawn } from "node:child_process";
+import { searchKnowledge } from "./knowledge";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
+
+type LangGraphModule = typeof import("@langchain/langgraph");
+
+let langGraphModulePromise: Promise<LangGraphModule> | null = null;
+
+function loadLangGraph(): Promise<LangGraphModule> {
+  if (!langGraphModulePromise) {
+    langGraphModulePromise = import("@langchain/langgraph");
+  }
+  return langGraphModulePromise;
+}
 
 app.use(cors({ origin: true }));
 // Cross-Origin Resource Policy / Embedder Policy: required so the Vite dev page
@@ -31,6 +43,28 @@ app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
+});
+
+app.post("/api/knowledge/search", async (req, res) => {
+  const query = typeof req.body?.query === "string" ? req.body.query : "";
+  if (query.trim().length < 3) {
+    return res.status(400).json({ ok: false, error: "query too short" });
+  }
+  try {
+    const data = await searchKnowledge({
+      query,
+      limit: typeof req.body?.limit === "number" ? req.body.limit : undefined,
+      sources: Array.isArray(req.body?.sources)
+        ? req.body.sources.filter((item: unknown): item is string => typeof item === "string")
+        : undefined,
+    });
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: (error as Error).message,
+    });
+  }
 });
 
 /* ---------------------------------------------------------------- types ---*/
@@ -348,6 +382,8 @@ app.post("/api/runtimes/langgraph/run", async (req, res) => {
   };
 
   try {
+    const { StateGraph, START, END, Annotation } = await loadLangGraph();
+
     // Build a dynamic graph. State is a free-form record so user-defined transforms
     // can stash arbitrary keys.
     const StateSchema = Annotation.Root({
@@ -597,6 +633,78 @@ app.post("/api/tools/run", async (req, res) => {
         latencyMs: Date.now() - t0,
       });
   }
+});
+
+/* ---------------------------------------------- /api/system/command -----*/
+
+interface SystemCommandRequest {
+  command: {
+    id: string;
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    estimatedDurationMs?: number;
+  };
+}
+
+app.post("/api/system/command", async (req, res) => {
+  const body = req.body as SystemCommandRequest | undefined;
+  const command = body?.command;
+  if (!command?.command) {
+    return res.status(400).json({
+      success: false,
+      exitCode: 1,
+      stdout: "",
+      stderr: "missing command",
+      durationMs: 0,
+    });
+  }
+
+  const started = Date.now();
+  const timeoutMs = Math.max(1000, command.estimatedDurationMs ?? 120_000);
+  const child = spawn(command.command, command.args ?? [], {
+    cwd: command.cwd,
+    env: { ...process.env, ...(command.env ?? {}) },
+    shell: false,
+  });
+
+  let stdout = "";
+  let stderr = "";
+  const timer = setTimeout(() => {
+    stderr += `\nTimeout after ${timeoutMs}ms`;
+    child.kill("SIGTERM");
+  }, timeoutMs);
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+    if (stdout.length > 200_000) stdout = stdout.slice(-200_000);
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+    if (stderr.length > 200_000) stderr = stderr.slice(-200_000);
+  });
+
+  child.on("error", (error) => {
+    clearTimeout(timer);
+    res.json({
+      success: false,
+      exitCode: 1,
+      stdout,
+      stderr: stderr || error.message,
+      durationMs: Date.now() - started,
+    });
+  });
+  child.on("close", (code) => {
+    clearTimeout(timer);
+    res.json({
+      success: code === 0,
+      exitCode: code ?? 1,
+      stdout,
+      stderr,
+      durationMs: Date.now() - started,
+    });
+  });
 });
 
 async function runTool(body: ToolRunRequest): Promise<unknown> {

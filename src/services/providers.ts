@@ -1,10 +1,53 @@
-import type { ProviderPreset } from "@/types";
+import type { ProviderPreset, ProviderSpec } from "@/types";
+
+function applyProviderVariables(
+  value: string | undefined,
+  variables: Record<string, string> | undefined,
+): string | undefined {
+  if (!value || !variables) return value;
+  return Object.entries(variables).reduce(
+    (acc, [key, variableValue]) =>
+      acc.replaceAll(`{${key}}`, variableValue ?? ""),
+    value,
+  );
+}
+
+export function resolveProviderSpec(spec: ProviderSpec): ProviderSpec {
+  return {
+    ...spec,
+    baseUrl:
+      applyProviderVariables(spec.baseUrl, spec.variables) ?? spec.baseUrl,
+    pathOverrides: spec.pathOverrides
+      ? {
+          chat: applyProviderVariables(
+            spec.pathOverrides.chat,
+            spec.variables,
+          ),
+          models: applyProviderVariables(
+            spec.pathOverrides.models,
+            spec.variables,
+          ),
+        }
+      : undefined,
+  };
+}
 
 /**
  * Catalog of supported AI providers. Pre-fills baseUrl + auth shape so the
  * Settings UI only needs to ask the user for their API key.
  */
 export const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: "github-copilot",
+    name: "GitHub Copilot / GitHub Models",
+    shape: "openai",
+    baseUrl: "https://models.github.ai/inference",
+    authMode: "bearer",
+    envVar: "GITHUB_TOKEN",
+    presetModels: [],
+    notes:
+      "Use um token com acesso ao GitHub Models/Copilot inference endpoint. Se sua organização usar outro host, edite a Base URL.",
+  },
   {
     id: "openrouter",
     name: "OpenRouter",
@@ -34,6 +77,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     authHeaderName: "xi-api-key",
     envVar: "ELEVENLABS_API_KEY",
     presetModels: ["eleven_multilingual_v2", "eleven_turbo_v2_5"],
+    presetVoices: ["Rachel", "Bella", "Antoni", "Elli", "Josh"],
+    audioModes: ["tts", "stt"],
     pathOverrides: { models: "/models" },
     notes: "Usado pelo Audio Studio para voz e áudio.",
   },
@@ -56,6 +101,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     authMode: "bearer",
     envVar: "OPENAI_API_KEY",
     presetModels: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o3-mini"],
+    presetVoices: ["alloy", "ash", "ballad", "coral", "nova", "verse"],
+    audioModes: ["tts", "stt", "realtime"],
   },
   {
     id: "anthropic",
@@ -78,8 +125,18 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     presetModels: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
   },
   {
+    id: "roo-code",
+    name: "Roo Code Gateway",
+    shape: "custom",
+    baseUrl: "https://api.example.com/v1",
+    authMode: "bearer",
+    presetModels: [],
+    notes:
+      "Roo Code normalmente usa providers externos. Este preset serve para ligar um gateway OpenAI-compatible dedicado ao seu fluxo Roo.",
+  },
+  {
     id: "opencode",
-    name: "OpenCode Zen",
+    name: "OpenCode Go",
     shape: "openai",
     baseUrl: "https://opencode.ai/api/v1",
     authMode: "bearer",
@@ -101,6 +158,19 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: "https://ollama.ai/api",
     authMode: "bearer",
     presetModels: [],
+    notes:
+      "Use sua conta ou gateway cloud compatível com o endpoint OpenAI-style do Ollama.",
+  },
+  {
+    id: "dashscope",
+    name: "Alibaba Model Studio / DashScope",
+    shape: "openai",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    authMode: "bearer",
+    envVar: "DASHSCOPE_API_KEY",
+    presetModels: ["qwen-max", "qwen-plus", "qwen-turbo"],
+    notes:
+      "Base internacional em modo compatível com OpenAI. Se sua conta usar endpoint regional, troque a Base URL.",
   },
   {
     id: "gemini",
@@ -146,6 +216,29 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     authMode: "bearer",
     envVar: "XAI_API_KEY",
     presetModels: ["grok-2-latest", "grok-2-mini"],
+  },
+  {
+    id: "xai-voice",
+    name: "xAI Grok Voice",
+    shape: "openai",
+    baseUrl: "https://api.x.ai/v1",
+    authMode: "bearer",
+    envVar: "XAI_API_KEY",
+    presetModels: [],
+    presetVoices: ["alloy", "nova", "verse", "calm"],
+    audioModes: ["tts", "stt", "realtime"],
+    notes:
+      "Preset para voz/TTS/STT/realtime sobre a stack da xAI. Busque os modelos ao vivo quando sua conta estiver configurada.",
+  },
+  {
+    id: "xiaomi-mimo",
+    name: "Xiaomi Mimo",
+    shape: "openai",
+    baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
+    authMode: "bearer",
+    presetModels: [],
+    notes:
+      "Endpoint SGP fornecido pelo usuário. Se sua conta exigir outro host ou plano, ajuste a Base URL no editor.",
   },
   {
     id: "together",
@@ -237,7 +330,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: "https://api.example.com/v1",
     authMode: "bearer",
     presetModels: [],
-    notes: "Any OpenAI-compatible endpoint.",
+    audioModes: ["tts", "stt", "realtime"],
+    notes:
+      "Any OpenAI-compatible endpoint. You can add multiple custom provider instances from Settings.",
   },
 ];
 

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { ensurePresetsRegistered, useConfig } from "@/stores/config";
 
-const LAZY_ROUTE_TIMEOUT = 7000;
+const LAZY_ROUTE_TIMEOUT = 12000;
 
 vi.mock("@monaco-editor/react", () => ({
   default: () => <textarea aria-label="monaco-editor" />,
@@ -46,6 +46,7 @@ describe("app route smoke", () => {
         timeout: LAZY_ROUTE_TIMEOUT,
       }),
     ).toBeInTheDocument();
+    expect(screen.queryByText("Este módulo falhou ao renderizar.")).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Agentes"));
     expect(

@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   ProviderConfig,
+  ProviderAudioMode,
+  ProviderPreset,
   ModelConfig,
   AgentRuntime,
   RuntimeCapabilities,
@@ -20,7 +22,11 @@ import {
   deobfuscate,
   storage,
 } from "@/services/storage";
-import { PROVIDER_PRESETS, presetById } from "@/services/providers";
+import {
+  PROVIDER_PRESETS,
+  presetById,
+  resolveProviderSpec,
+} from "@/services/providers";
 
 export interface AppSettings {
   appName: string;
@@ -41,24 +47,71 @@ export interface AppSettings {
   masterKey: string;
   corsOrigins: string[];
   rateLimitPerMinute: number;
+  memorySettings: {
+    provider: "local" | "pinecone" | "chroma" | "supabase";
+    embeddingModel: "local" | "openai" | "cohere";
+    pinecone?: { apiKey?: string; indexName?: string; environment?: string };
+    chroma?: { url?: string; collection?: string };
+    supabase?: { url?: string; key?: string; table?: string };
+  };
+  modelRouter: {
+    enabled: boolean;
+    preferCost: boolean;
+    preferSpeed: boolean;
+    allowVisionAutoRoute: boolean;
+  };
+}
+
+export const APP_BRAND_NAME = "Nexus Ultra AGI";
+export const APP_BRAND_SLUG = "nexus-ultra-agi";
+
+const LEGACY_APP_NAME = "PerfectAgent";
+const LEGACY_DEFAULT_PROJECT_DIR = "~/PerfectAgent/projects";
+const DEFAULT_PROJECT_DIR = "~/NexusUltraAGI/projects";
+
+function normalizeBrandingSettings(settings: AppSettings): AppSettings {
+  const name = settings.appName?.trim();
+  return {
+    ...settings,
+    appName: !name || name === LEGACY_APP_NAME ? APP_BRAND_NAME : name,
+    defaultProjectDir:
+      !settings.defaultProjectDir ||
+      settings.defaultProjectDir === LEGACY_DEFAULT_PROJECT_DIR
+        ? DEFAULT_PROJECT_DIR
+        : settings.defaultProjectDir,
+    primaryColor:
+      !settings.primaryColor || settings.primaryColor === "#17172d"
+        ? "#22262d"
+        : settings.primaryColor,
+  };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  appName: "PerfectAgent",
+  appName: APP_BRAND_NAME,
   language: "pt-BR",
   theme: "light",
   compactMode: false,
-  defaultProjectDir: "~/PerfectAgent/projects",
+  defaultProjectDir: DEFAULT_PROJECT_DIR,
   autoSave: true,
   autoSaveInterval: 15,
   telemetry: false,
-  primaryColor: "#17172d",
+  primaryColor: "#22262d",
   fontSize: "medium",
   editorTheme: "vs-dark",
   sidebarPosition: "left",
   masterKey: "pa-local-dev-key",
   corsOrigins: ["http://localhost:5173"],
   rateLimitPerMinute: 60,
+  memorySettings: {
+    provider: "local",
+    embeddingModel: "local",
+  },
+  modelRouter: {
+    enabled: true,
+    preferCost: false,
+    preferSpeed: false,
+    allowVisionAutoRoute: true,
+  },
 };
 
 export interface ChatThread {
@@ -79,6 +132,9 @@ interface SelectionState {
   runtimeId?: string;
   skillIds: string[];
   agentMode?: boolean;
+  voiceEnabled?: boolean;
+  voiceMode?: ProviderAudioMode;
+  voiceName?: string;
 }
 
 interface ConfigState {
@@ -174,8 +230,8 @@ interface ConfigState {
   importConfig: (json: string) => boolean;
 }
 
-function providerFromPreset(
-  preset: (typeof PROVIDER_PRESETS)[number],
+export function createProviderConfigFromPreset(
+  preset: ProviderPreset,
   existing?: Partial<ProviderConfig>,
 ): ProviderConfig {
   const id = existing?.id ?? preset.id;
@@ -187,6 +243,7 @@ function providerFromPreset(
     extraHeaders: existing?.spec?.extraHeaders ?? preset.extraHeaders,
     apiKey: existing?.spec?.apiKey ?? existing?.apiKey,
     pathOverrides: existing?.spec?.pathOverrides ?? preset.pathOverrides,
+    variables: existing?.spec?.variables,
   };
   const configured = Boolean(
     existing?.configured ?? (spec.authMode === "none" || spec.apiKey),
@@ -214,10 +271,13 @@ function seedProviders(
 ): Record<string, ProviderConfig> {
   const seeded: Record<string, ProviderConfig> = {};
   for (const preset of PROVIDER_PRESETS)
-    seeded[preset.id] = providerFromPreset(preset, existing[preset.id]);
+    seeded[preset.id] = createProviderConfigFromPreset(
+      preset,
+      existing[preset.id],
+    );
   for (const [id, cfg] of Object.entries(existing)) {
     if (!seeded[id])
-      seeded[id] = providerFromPreset(
+      seeded[id] = createProviderConfigFromPreset(
         presetById(cfg.presetId) ??
           PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1],
         { ...cfg, id },
@@ -398,11 +458,122 @@ function seedSupremeCoordinatorRuntime(): AgentRuntime {
   };
 }
 
-function buildSpecFromConfig(cfg: ProviderConfig): ProviderConfig["spec"] {
+function seedCognitiveRuntime(
+  id: string,
+  name: string,
+  description: string,
+  kind: RuntimeKind,
+  entry: string,
+): AgentRuntime {
   return {
+    id,
+    name,
+    description,
+    kind,
+    capabilities: defaultCapabilitiesFor(kind),
+    nodes: [],
+    edges: [],
+    entry,
+    exits: [entry],
+    memory: true,
+    status: "ready",
+  };
+}
+
+function seedCognitiveRuntimes(): AgentRuntime[] {
+  return [
+    seedCognitiveRuntime(
+      "rt-prometheus",
+      "Prometheus Runtime · Predictive Swarm",
+      "Crypto/DeFi predictive swarm with probabilistic WorldModels, Bayesian consensus and track-record-weighted decisions.",
+      "prometheus",
+      "prometheus",
+    ),
+    seedCognitiveRuntime(
+      "rt-morpheus-creative",
+      "Morpheus Runtime · Creative Consciousness",
+      "Creative game/art swarm with persistent Aesthetic Field, cross-critique and coherence-driven style evolution.",
+      "morpheus-creative",
+      "morpheus",
+    ),
+    seedCognitiveRuntime(
+      "rt-apollo",
+      "Apollo Runtime · Medical Grand Round",
+      "Bayesian medical swarm with specialist hypotheses, evidence requests, grand-round debate and explicit uncertainty.",
+      "apollo",
+      "apollo",
+    ),
+    seedCognitiveRuntime(
+      "rt-hermes",
+      "Hermes Runtime · Growth Swarm",
+      "Marketing/growth swarm with persistent Audience Memory, resonance prediction and campaign-result learning.",
+      "hermes",
+      "hermes",
+    ),
+    seedCognitiveRuntime(
+      "rt-athena",
+      "Athena Runtime · Epistemic Web",
+      "Research swarm that builds an epistemic graph, resolves contradictions, tracks provenance and generates knowledge gaps.",
+      "athena",
+      "athena",
+    ),
+    seedCognitiveRuntime(
+      "rt-vulcan",
+      "Vulcan Runtime · Living Codebase",
+      "Autonomous software engineering swarm for codebase health, security, performance, refactoring and test intelligence.",
+      "vulcan",
+      "vulcan",
+    ),
+    seedCognitiveRuntime(
+      "rt-oracle",
+      "Oracle Runtime · Strategic Intelligence",
+      "Strategic intelligence swarm with adversarial scenarios, red-team risk mapping and weak-signal detection.",
+      "oracle",
+      "oracle",
+    ),
+    seedCognitiveRuntime(
+      "rt-sophia",
+      "Sophia Runtime · Wisdom Field",
+      "Cross-tradition sacred-text runtime with specialist scholars, archetypal mapping and comparative synthesis.",
+      "sophia",
+      "sophia",
+    ),
+    seedCognitiveRuntime(
+      "rt-asclepius",
+      "Asclepius Runtime · Integrative Healing",
+      "Healing runtime with mechanistic pathway analysis, ancestral medical lenses and lightweight PubMed evidence retrieval.",
+      "asclepius",
+      "asclepius",
+    ),
+    seedCognitiveRuntime(
+      "rt-logos",
+      "Logos Runtime · Metaphysical Architecture",
+      "Metaphysical and initiatory-history runtime that converts worldview analysis into disciplined self-mastery.",
+      "logos",
+      "logos",
+    ),
+    seedCognitiveRuntime(
+      "rt-prometheus-mind",
+      "Prometheus-Mind Runtime · Cognitive Optimization",
+      "Neuroscience and cognitive-performance runtime focused on attention, recovery, plasticity and measurable improvement loops.",
+      "prometheus-mind",
+      "prometheus-mind",
+    ),
+    seedCognitiveRuntime(
+      "rt-nexus-prime",
+      "Nexus Prime · Meta-Runtime",
+      "Cognitive Parliament that orchestrates Prometheus, Morpheus, Apollo, Hermes, Athena, Vulcan, Oracle, Sophia, Asclepius, Logos and Prometheus-Mind.",
+      "nexus-prime",
+      "nexus",
+    ),
+  ];
+}
+
+export function buildSpecFromConfig(cfg: ProviderConfig): ProviderConfig["spec"] {
+  return resolveProviderSpec({
     ...cfg.spec,
     apiKey: cfg.spec.apiKey ? deobfuscate(cfg.spec.apiKey) : undefined,
-  };
+  });
 }
 
 function seedSkills(): Skill[] {
@@ -578,6 +749,7 @@ export const useConfig = create<ConfigState>()(
         seedRuntime(),
         seedOmegaRuntime(),
         seedMorpheusRuntime(),
+        ...seedCognitiveRuntimes(),
         seedStigmergyRuntime(),
         seedEphemeralRuntime(),
         seedSupremeCoordinatorRuntime(),
@@ -597,7 +769,9 @@ export const useConfig = create<ConfigState>()(
       studioSelection: { skillIds: [], agentMode: false },
 
       setSettings: (patch) =>
-        set((s) => ({ settings: { ...s.settings, ...patch } })),
+        set((s) => ({
+          settings: normalizeBrandingSettings({ ...s.settings, ...patch }),
+        })),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
 
       upsertProvider: (cfg) => {
@@ -1061,7 +1235,13 @@ export const useConfig = create<ConfigState>()(
           // shallow validation: must be object with `settings`
           if (!parsed || typeof parsed !== "object" || !("settings" in parsed))
             return false;
-          set(parsed);
+          set({
+            ...(parsed as Partial<ConfigState>),
+            settings: normalizeBrandingSettings({
+              ...DEFAULT_SETTINGS,
+              ...((parsed as Partial<ConfigState>).settings ?? {}),
+            }),
+          });
           return true;
         } catch {
           return false;
@@ -1093,7 +1273,7 @@ export const useConfig = create<ConfigState>()(
         };
         return {
           ...state,
-          settings,
+          settings: normalizeBrandingSettings(settings),
           providers,
           models: modelsFromProviders(providers, state.models ?? []),
           chatThreads: state.chatThreads ?? [],
@@ -1103,6 +1283,10 @@ export const useConfig = create<ConfigState>()(
       },
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        state.settings = normalizeBrandingSettings({
+          ...DEFAULT_SETTINGS,
+          ...(state.settings ?? {}),
+        });
         const providers = seedProviders(state.providers);
         state.providers = providers;
         state.models = modelsFromProviders(providers, state.models);
@@ -1111,6 +1295,7 @@ export const useConfig = create<ConfigState>()(
           seedRuntime(),
           seedOmegaRuntime(),
           seedMorpheusRuntime(),
+          ...seedCognitiveRuntimes(),
           seedStigmergyRuntime(),
           seedEphemeralRuntime(),
           seedSupremeCoordinatorRuntime(),
@@ -1223,6 +1408,18 @@ export function defaultCapabilitiesFor(kind: RuntimeKind): RuntimeCapabilities {
         supportsLivePreview: false,
       };
     case "morpheus-pantheon":
+    case "prometheus":
+    case "morpheus-creative":
+    case "apollo":
+    case "hermes":
+    case "athena":
+    case "vulcan":
+    case "oracle":
+    case "sophia":
+    case "asclepius":
+    case "logos":
+    case "prometheus-mind":
+    case "nexus-prime":
       return {
         canPlan: true,
         canGenerateCode: true,

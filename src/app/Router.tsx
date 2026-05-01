@@ -2,6 +2,7 @@ import {
   Component,
   lazy,
   Suspense,
+  useEffect,
   type ComponentType,
   type ReactNode,
 } from "react";
@@ -11,17 +12,21 @@ import {
   Blocks,
   Bot,
   BrainCircuit,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   FileText,
   GitBranch,
   Image,
   LayoutDashboard,
+  Menu,
   Music,
   Plug,
   Plus,
   Settings,
   Video,
   Wrench,
+  X,
 } from "lucide-react";
 import {
   Link,
@@ -32,7 +37,10 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { useConfig } from "@/stores/config";
+import { BrandLockup, BrandMark } from "@/components/Brand";
+import { APP_BRAND_NAME, useConfig } from "@/stores/config";
+import { useSidebarStore } from "@/core/state/navigationStore";
+import { useBreakpoint } from "@/shared/hooks/useBreakpoint";
 import { cn } from "@/utils/cn";
 
 type ModuleName =
@@ -104,7 +112,15 @@ const AudioStudioPage = lazyNamed(
   "AudioStudioPage",
 );
 const SettingsPage = lazyNamed<{
-  initialTab?: "models" | "general" | "security" | "appearance";
+  initialTab?:
+    | "models"
+    | "general"
+    | "security"
+    | "appearance"
+    | "memory"
+    | "model-router"
+    | "usage"
+    | "integrations";
 }>(
   () => import("@/pages/SettingsPage"),
   "SettingsPage",
@@ -269,6 +285,14 @@ export function AppRouter() {
             }
           />
           <Route
+            path="settings/security"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="security" />
+              </RouteFrame>
+            }
+          />
+          <Route
             path="settings/preferences"
             element={
               <RouteFrame>
@@ -305,6 +329,62 @@ export function AppRouter() {
             element={
               <RouteFrame>
                 <SettingsPage initialTab="general" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/memory"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="memory" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/mcp"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="integrations" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/integrations"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="integrations" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/model-router"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="model-router" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/skills"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="integrations" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/usage"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="usage" />
+              </RouteFrame>
+            }
+          />
+          <Route
+            path="settings/export"
+            element={
+              <RouteFrame>
+                <SettingsPage initialTab="integrations" />
               </RouteFrame>
             }
           />
@@ -363,14 +443,32 @@ function RouteFrame({ children }: { children: ReactNode }) {
 }
 
 function AppShell() {
+  const { isMobile } = useBreakpoint();
+  const { open } = useSidebarStore();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 28, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-      className="glass-shell flex h-[97vh] w-full max-w-[98vw] overflow-hidden rounded-[28px] border border-white/60 bg-white/45 shadow-[0_42px_130px_rgba(69,78,133,0.34)] backdrop-blur-3xl lg:h-[98vh] lg:rounded-[40px]"
+      className="glass-shell relative flex h-[97vh] w-full max-w-[98vw] overflow-hidden rounded-[28px] border border-white/60 bg-white/45 shadow-[0_42px_130px_rgba(69,78,133,0.34)] backdrop-blur-3xl lg:h-[98vh] lg:rounded-[40px]"
     >
       <Sidebar />
+      {isMobile ? (
+        <>
+          <button
+            type="button"
+            onClick={open}
+            className="absolute left-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/70 bg-white/85 text-slate-700 shadow-lg"
+            aria-label="Abrir menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="pointer-events-none absolute right-3 top-3 z-30">
+            <BrandMark size={40} />
+          </div>
+        </>
+      ) : null}
       <div className="flex min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-5">
         <div className="h-full min-h-0 w-full min-w-0">
           <Outlet />
@@ -453,6 +551,14 @@ const navItems: NavItem[] = [
 ];
 
 function Sidebar() {
+  const { isMobile, isTablet, isDesktop } = useBreakpoint();
+  const {
+    isOpen,
+    isCollapsed,
+    close,
+    toggleCollapse,
+    setCollapsed,
+  } = useSidebarStore();
   const location = useLocation();
   const navigate = useNavigate();
   const addChatThread = useConfig((s) => s.addChatThread);
@@ -470,41 +576,207 @@ function Sidebar() {
     navigate(`/chat/${thread.id}`);
   }
 
+  useEffect(() => {
+    if (isMobile) close();
+  }, [location.pathname, isMobile, close]);
+
+  useEffect(() => {
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isMobile && isOpen) close();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [isMobile, isOpen, close]);
+
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobile, isOpen]);
+
+  useEffect(() => {
+    if (isDesktop && isCollapsed) setCollapsed(false);
+  }, [isDesktop, isCollapsed, setCollapsed]);
+
+  const content = (
+    <SidebarContent
+      isCollapsed={isTablet && isCollapsed}
+      onCreateNewChat={createNewChat}
+      pathname={location.pathname}
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <div
+          className={cn(
+            "fixed inset-0 z-40 bg-black/55 backdrop-blur-sm transition-opacity duration-300",
+            isOpen
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0",
+          )}
+          onClick={close}
+          aria-hidden="true"
+        />
+
+        <aside
+          role="navigation"
+          aria-label="Menu principal"
+          className={cn(
+            "app-sidebar fixed left-0 top-0 bottom-0 z-50 flex w-[240px] max-w-[80vw] flex-col border-r border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl",
+            "transition-transform duration-300 ease-out",
+            isOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/60 px-3">
+            <button
+              type="button"
+              onClick={() => { createNewChat(); close(); }}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-[#17172d] px-3 text-xs font-bold text-white"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Novo chat
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
+              aria-label="Fechar menu"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+          </div>
+          <nav className="app-scrollbar min-h-0 flex-1 overflow-y-auto py-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = item.match(location.pathname);
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={close}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2.5 transition-colors",
+                    active
+                      ? "bg-slate-900/[0.07] text-slate-950"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition-all",
+                      active
+                        ? "border-slate-900 bg-[#17172d] text-white shadow-[0_8px_18px_rgba(23,23,45,0.22)]"
+                        : "border-white/80 bg-white/80 text-slate-600 shadow-sm",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold leading-tight">{item.label}</span>
+                    <span className="block text-[10px] font-medium text-slate-400">{item.helper}</span>
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="shrink-0 border-t border-white/60 px-4 py-3">
+            <BrandLockup
+              href="/"
+              compact
+              iconSize={34}
+              caption="Navigation Core"
+              className="w-full"
+            />
+          </div>
+        </aside>
+      </>
+    );
+  }
+
   return (
-    <aside className="flex w-16 shrink-0 flex-col items-center justify-between py-4 sm:w-[76px] lg:w-[88px] lg:py-5">
+    <aside
+      role="navigation"
+      aria-label="Menu principal"
+      className={cn(
+        "relative flex shrink-0 flex-col border-r border-white/60",
+        isTablet
+          ? isCollapsed
+            ? "w-16"
+            : "w-[76px]"
+          : "w-16 sm:w-[76px] lg:w-[88px]",
+      )}
+    >
+      {content}
+
+      {isTablet ? (
+        <button
+          type="button"
+          onClick={toggleCollapse}
+          className="absolute -right-3 top-6 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-white text-slate-500 shadow-md"
+          aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="h-3 w-3" />
+          ) : (
+            <ChevronLeft className="h-3 w-3" />
+          )}
+        </button>
+      ) : null}
+    </aside>
+  );
+}
+
+function SidebarContent({
+  pathname,
+  onCreateNewChat,
+  isCollapsed,
+}: {
+  pathname: string;
+  onCreateNewChat: () => void;
+  isCollapsed?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-full flex-col items-center justify-between py-4 lg:py-5",
+        isCollapsed ? "gap-2" : "gap-2.5",
+      )}
+    >
       <div className="flex flex-col items-center gap-2.5">
         <button
           type="button"
-          onClick={createNewChat}
+          onClick={onCreateNewChat}
           className="group relative"
           aria-label="Novo chat"
         >
           <IconVisual
             icon={Plus}
             label="Novo chat"
-            active={location.pathname.startsWith("/chat")}
+            active={pathname.startsWith("/chat")}
             primary
           />
         </button>
         <div className="mt-0.5 flex flex-col items-center gap-2.5">
           {navItems.map((item) => (
-            <IconLink
-              key={item.path}
-              item={item}
-              active={item.match(location.pathname)}
-            />
+            <IconLink key={item.path} item={item} active={item.match(pathname)} />
           ))}
         </div>
       </div>
       <Link
-        className="relative flex h-11 w-11 items-center justify-center rounded-full bg-black text-white shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
-        aria-label="PerfectAgent"
+        className="inline-flex"
+        aria-label={APP_BRAND_NAME}
         to="/"
       >
-        <span className="absolute h-4 w-4 -rotate-45 rounded-[3px] border-l-[5px] border-t-[5px] border-white" />
-        <span className="absolute h-4 w-4 translate-x-1 translate-y-1 rounded-[3px] border-r-[5px] border-b-[5px] border-white" />
+        <BrandMark size={44} alt={APP_BRAND_NAME} />
       </Link>
-    </aside>
+    </div>
   );
 }
 

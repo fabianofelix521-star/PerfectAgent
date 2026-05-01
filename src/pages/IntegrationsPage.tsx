@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plug, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle } from "lucide-react";
-import { useConfig, getIntegrationDecoded } from "@/stores/config";
+import { APP_BRAND_NAME, useConfig, getIntegrationDecoded } from "@/stores/config";
 import { WorkspaceShell, Surface, HeaderAction, Modal, EditableField, SelectControl, Spinner, StatusBadge } from "@/components/ui";
 import type { Integration } from "@/types";
 import { api } from "@/services/api";
@@ -10,12 +10,17 @@ function rid() { return `in-${Math.random().toString(36).slice(2, 9)}`; }
 
 const KIND_PRESETS: Array<{ value: Integration["kind"]; label: string; defaults: Partial<Integration> }> = [
   { value: "webhook", label: "Webhook genérico", defaults: { method: "POST", headers: { "content-type": "application/json" } } },
-  { value: "slack", label: "Slack (Incoming Webhook)", defaults: { method: "POST", headers: { "content-type": "application/json" }, bodyTemplate: '{"text":"olá do PerfectAgent"}' } },
+  { value: "slack", label: "Slack (Incoming Webhook)", defaults: { method: "POST", headers: { "content-type": "application/json" }, bodyTemplate: `{"text":"olá do ${APP_BRAND_NAME}"}` } },
+  { value: "telegram", label: "Telegram Bot API", defaults: { method: "POST", url: "https://api.telegram.org/bot{TOKEN}/sendMessage", headers: { "content-type": "application/json" }, bodyTemplate: `{"chat_id":"SEU_CHAT_ID","text":"Olá do ${APP_BRAND_NAME}!"}` } },
+  { value: "whatsapp", label: "WhatsApp (Meta Cloud API)", defaults: { method: "POST", url: "https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages", headers: { "content-type": "application/json" }, bodyTemplate: `{"messaging_product":"whatsapp","to":"5511999999999","type":"text","text":{"body":"Olá do ${APP_BRAND_NAME}!"}}` } },
+  { value: "discord", label: "Discord Webhook", defaults: { method: "POST", headers: { "content-type": "application/json" }, bodyTemplate: `{"content":"Olá do ${APP_BRAND_NAME}!","username":"${APP_BRAND_NAME}"}` } },
   { value: "github", label: "GitHub API", defaults: { method: "GET", url: "https://api.github.com/user" } },
   { value: "stripe", label: "Stripe API", defaults: { method: "GET", url: "https://api.stripe.com/v1/charges?limit=1" } },
   { value: "supabase", label: "Supabase REST", defaults: { method: "GET" } },
   { value: "notion", label: "Notion API", defaults: { method: "GET", url: "https://api.notion.com/v1/users/me", headers: { "notion-version": "2022-06-28" } } },
   { value: "google", label: "Google API", defaults: { method: "GET" } },
+  { value: "airtable", label: "Airtable API", defaults: { method: "GET", url: "https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}" } },
+  { value: "linear", label: "Linear API", defaults: { method: "POST", url: "https://api.linear.app/graphql", headers: { "content-type": "application/json" }, bodyTemplate: '{"query":"{ viewer { id name } }"}' } },
   { value: "custom", label: "Custom HTTP", defaults: { method: "POST" } },
 ];
 

@@ -1,14 +1,20 @@
 import { useMemo, useState } from "react";
-import { Download, FileText, Search } from "lucide-react";
+import { Download, Eye, FileText, Search } from "lucide-react";
 import JSZip from "jszip";
 import { WorkspaceShell, Surface, SectionTitle } from "@/components/ui";
-import { useConfig } from "@/stores/config";
+import { APP_BRAND_SLUG, useConfig } from "@/stores/config";
 import { toast } from "@/components/Toast";
+import {
+  createViewerFileFromProjectFile,
+  UniversalViewer,
+  type ViewerFile,
+} from "@/shared/components/viewer/UniversalViewer";
 
 export function DocumentsPage() {
   const projects = useConfig((s) => s.projects);
   const chatThreads = useConfig((s) => s.chatThreads);
   const [query, setQuery] = useState("");
+  const [selectedFile, setSelectedFile] = useState<ViewerFile | null>(null);
 
   const documents = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -29,8 +35,24 @@ export function DocumentsPage() {
         .map((message) => `## ${message.role}\n\n${message.content}`)
         .join("\n\n"),
       kind: "Conversa",
+      viewerFile: {
+        id: `chat-view:${thread.id}`,
+        name: `${thread.title}.md`,
+        type: "markdown" as const,
+        content: thread.messages
+          .map((message) => `## ${message.role}\n\n${message.content}`)
+          .join("\n\n"),
+        mimeType: "text/markdown",
+      },
     }));
-    const all = [...projectFiles, ...chatExports];
+    const enrichedProjectFiles = projectFiles.map((doc) => ({
+      ...doc,
+      viewerFile: createViewerFileFromProjectFile({
+        path: doc.title,
+        content: doc.content,
+      }),
+    }));
+    const all = [...enrichedProjectFiles, ...chatExports];
     if (!needle) return all;
     return all.filter(
       (item) =>
@@ -50,7 +72,7 @@ export function DocumentsPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `perfectagent-documents-${Date.now()}.zip`;
+    anchor.download = `${APP_BRAND_SLUG}-documents-${Date.now()}.zip`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -104,6 +126,16 @@ export function DocumentsPage() {
                 <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-slate-600">
                   {doc.content || "Sem conteúdo."}
                 </p>
+                <div className="mt-4 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFile(doc.viewerFile)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Visualizar
+                  </button>
+                </div>
               </article>
             ))
           ) : (
@@ -113,6 +145,13 @@ export function DocumentsPage() {
           )}
         </div>
       </Surface>
+      {selectedFile ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur" onClick={() => setSelectedFile(null)}>
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden" onClick={(event) => event.stopPropagation()}>
+            <UniversalViewer file={selectedFile} onClose={() => setSelectedFile(null)} />
+          </div>
+        </div>
+      ) : null}
     </WorkspaceShell>
   );
 }
