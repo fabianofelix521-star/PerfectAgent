@@ -10,7 +10,11 @@ PORT="${PORT:-3336}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
 SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
-control_path="${TMPDIR:-/tmp}/nexus-ultra-agi-ssh-%C"
+control_dir="${NEXUS_SSH_CONTROL_DIR:-${TMPDIR:-/tmp}}"
+if ((${#control_dir} > 24)); then
+  control_dir="/tmp"
+fi
+control_path="$control_dir/nua-%C"
 SSH_OPTS+=(
   -o ControlMaster=auto
   -o ControlPersist=10m
