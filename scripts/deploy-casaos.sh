@@ -32,8 +32,32 @@ die() {
   exit 1
 }
 
+SUDO_PASSWORD="${DEPLOY_SUDO_PASSWORD:-}"
+if [[ -z "$SUDO_PASSWORD" && -n "${DEPLOY_SUDO_PASSWORD_FILE:-}" ]]; then
+  [[ -r "$DEPLOY_SUDO_PASSWORD_FILE" ]] || die "cannot read DEPLOY_SUDO_PASSWORD_FILE: $DEPLOY_SUDO_PASSWORD_FILE"
+  SUDO_PASSWORD="$(<"$DEPLOY_SUDO_PASSWORD_FILE")"
+fi
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+prompt_sudo_password() {
+  if [[ -z "$SUDO_PASSWORD" ]]; then
+    printf 'Remote sudo password for %s: ' "$REMOTE" >&2
+    IFS= read -rs SUDO_PASSWORD
+    printf '\n' >&2
+  fi
+}
+
+run_remote_root() {
+  local remote_script="$1"
+
+  prompt_sudo_password
+  {
+    printf '%s\n' "$SUDO_PASSWORD"
+    printf '%s\n' "$remote_script"
+  } | ssh "${SSH_OPTS[@]}" "$REMOTE" 'sudo -S -p "" bash -se'
 }
 
 for cmd in git npm rsync ssh; do
@@ -73,19 +97,16 @@ npm run build
 printf 'Checking SSH access to %s...\n' "$REMOTE"
 ssh "${SSH_OPTS[@]}" "$REMOTE" 'printf "connected as %s on %s\n" "$(whoami)" "$(hostname)"'
 
-printf 'Checking sudo access on %s...\n' "$REMOTE"
-ssh -tt "${SSH_OPTS[@]}" "$REMOTE" 'sudo -v'
-
 printf 'Protecting sibling apps and creating release directory...\n'
-ssh "${SSH_OPTS[@]}" "$REMOTE" "set -euo pipefail
+run_remote_root "set -euo pipefail
 for sibling in /DATA/AppData/openclaw /DATA/AppData/OpenClaw /DATA/AppData/crowagent /DATA/AppData/CrowAgent; do
   if [ \"\$sibling\" = '$REMOTE_DIR' ]; then
     echo 'refusing protected sibling path' >&2
     exit 1
   fi
 done
-sudo -n mkdir -p '$release_dir' '$REMOTE_DIR/shared'
-sudo -n chown -R \$(id -u):\$(id -g) '$REMOTE_DIR'
+mkdir -p '$release_dir' '$REMOTE_DIR/shared'
+chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$REMOTE_DIR'
 "
 
 printf 'Syncing source and build output to %s...\n' "$release_dir"
@@ -107,8 +128,14 @@ mv -Tf '$REMOTE_DIR/current.tmp' '$REMOTE_DIR/current'
 "
 
 printf 'Installing service environment...\n'
-printf 'NODE_ENV=production\nPORT=%s\nNEXUS_AUTH_KEY=%s\n' "$PORT" "$NEXUS_AUTH_KEY" \
-  | ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -n install -m 600 -o root -g root /dev/stdin '$REMOTE_DIR/shared/nexus-ultra-agi.env'"
+run_remote_root "cat > '$REMOTE_DIR/shared/nexus-ultra-agi.env' <<'ENV'
+NODE_ENV=production
+PORT=$PORT
+NEXUS_AUTH_KEY=$NEXUS_AUTH_KEY
+ENV
+chmod 600 '$REMOTE_DIR/shared/nexus-ultra-agi.env'
+chown root:root '$REMOTE_DIR/shared/nexus-ultra-agi.env'
+"
 
 service_file="$(mktemp)"
 cat >"$service_file" <<SERVICE
@@ -130,15 +157,17 @@ SyslogIdentifier=$SERVICE_NAME
 WantedBy=multi-user.target
 SERVICE
 
-ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -n tee '/etc/systemd/system/$SERVICE_NAME.service' >/dev/null" <"$service_file"
+rsync -az "$service_file" "$REMOTE:$release_dir/$SERVICE_NAME.service"
 rm -f "$service_file"
 
+run_remote_root "install -m 644 '$release_dir/$SERVICE_NAME.service' '/etc/systemd/system/$SERVICE_NAME.service'"
+
 printf 'Restarting %s...\n' "$SERVICE_NAME"
-ssh "${SSH_OPTS[@]}" "$REMOTE" "set -euo pipefail
-sudo -n systemctl daemon-reload
-sudo -n systemctl enable '$SERVICE_NAME'
-sudo -n systemctl restart '$SERVICE_NAME'
-sudo -n systemctl status '$SERVICE_NAME' --no-pager -l
+run_remote_root "set -euo pipefail
+systemctl daemon-reload
+systemctl enable '$SERVICE_NAME'
+systemctl restart '$SERVICE_NAME'
+systemctl status '$SERVICE_NAME' --no-pager -l
 "
 
 printf 'Cleaning old releases, keeping %s...\n' "$KEEP_RELEASES"
