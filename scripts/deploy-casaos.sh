@@ -10,6 +10,19 @@ PORT="${PORT:-3336}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
 SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
+control_path="${TMPDIR:-/tmp}/nexus-ultra-agi-ssh-%C"
+SSH_OPTS+=(
+  -o ControlMaster=auto
+  -o ControlPersist=10m
+  -o ControlPath="$control_path"
+)
+
+cleanup_ssh_control() {
+  ssh -O exit "${SSH_OPTS[@]}" "$REMOTE" >/dev/null 2>&1 || true
+}
+
+trap cleanup_ssh_control EXIT
+
 die() {
   printf 'deploy-casaos: %s\n' "$*" >&2
   exit 1
@@ -56,6 +69,9 @@ npm run build
 printf 'Checking SSH access to %s...\n' "$REMOTE"
 ssh "${SSH_OPTS[@]}" "$REMOTE" 'printf "connected as %s on %s\n" "$(whoami)" "$(hostname)"'
 
+printf 'Checking sudo access on %s...\n' "$REMOTE"
+ssh -tt "${SSH_OPTS[@]}" "$REMOTE" 'sudo -v'
+
 printf 'Protecting sibling apps and creating release directory...\n'
 ssh "${SSH_OPTS[@]}" "$REMOTE" "set -euo pipefail
 for sibling in /DATA/AppData/openclaw /DATA/AppData/OpenClaw /DATA/AppData/crowagent /DATA/AppData/CrowAgent; do
@@ -64,8 +80,8 @@ for sibling in /DATA/AppData/openclaw /DATA/AppData/OpenClaw /DATA/AppData/crowa
     exit 1
   fi
 done
-sudo mkdir -p '$release_dir' '$REMOTE_DIR/shared'
-sudo chown -R \$(id -u):\$(id -g) '$REMOTE_DIR'
+sudo -n mkdir -p '$release_dir' '$REMOTE_DIR/shared'
+sudo -n chown -R \$(id -u):\$(id -g) '$REMOTE_DIR'
 "
 
 printf 'Syncing source and build output to %s...\n' "$release_dir"
@@ -88,7 +104,7 @@ mv -Tf '$REMOTE_DIR/current.tmp' '$REMOTE_DIR/current'
 
 printf 'Installing service environment...\n'
 printf 'NODE_ENV=production\nPORT=%s\nNEXUS_AUTH_KEY=%s\n' "$PORT" "$NEXUS_AUTH_KEY" \
-  | ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo install -m 600 -o root -g root /dev/stdin '$REMOTE_DIR/shared/nexus-ultra-agi.env'"
+  | ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -n install -m 600 -o root -g root /dev/stdin '$REMOTE_DIR/shared/nexus-ultra-agi.env'"
 
 service_file="$(mktemp)"
 cat >"$service_file" <<SERVICE
@@ -110,15 +126,15 @@ SyslogIdentifier=$SERVICE_NAME
 WantedBy=multi-user.target
 SERVICE
 
-ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo tee '/etc/systemd/system/$SERVICE_NAME.service' >/dev/null" <"$service_file"
+ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -n tee '/etc/systemd/system/$SERVICE_NAME.service' >/dev/null" <"$service_file"
 rm -f "$service_file"
 
 printf 'Restarting %s...\n' "$SERVICE_NAME"
 ssh "${SSH_OPTS[@]}" "$REMOTE" "set -euo pipefail
-sudo systemctl daemon-reload
-sudo systemctl enable '$SERVICE_NAME'
-sudo systemctl restart '$SERVICE_NAME'
-sudo systemctl status '$SERVICE_NAME' --no-pager -l
+sudo -n systemctl daemon-reload
+sudo -n systemctl enable '$SERVICE_NAME'
+sudo -n systemctl restart '$SERVICE_NAME'
+sudo -n systemctl status '$SERVICE_NAME' --no-pager -l
 "
 
 printf 'Cleaning old releases, keeping %s...\n' "$KEEP_RELEASES"
