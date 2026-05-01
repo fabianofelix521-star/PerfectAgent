@@ -20,6 +20,7 @@ SSH_OPTS+=(
   -o ControlPersist=10m
   -o ControlPath="$control_path"
 )
+RSYNC_RSH="ssh ${SSH_OPTS[*]}"
 
 cleanup_ssh_control() {
   ssh -O exit "${SSH_OPTS[@]}" "$REMOTE" >/dev/null 2>&1 || true
@@ -110,7 +111,7 @@ chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$REMOTE_DIR'
 "
 
 printf 'Syncing source and build output to %s...\n' "$release_dir"
-rsync -az --delete \
+rsync -az -e "$RSYNC_RSH" --delete \
   --exclude '.git/' \
   --exclude 'node_modules/' \
   --exclude 'coverage/' \
@@ -157,7 +158,7 @@ SyslogIdentifier=$SERVICE_NAME
 WantedBy=multi-user.target
 SERVICE
 
-rsync -az "$service_file" "$REMOTE:$release_dir/$SERVICE_NAME.service"
+rsync -az -e "$RSYNC_RSH" "$service_file" "$REMOTE:$release_dir/$SERVICE_NAME.service"
 rm -f "$service_file"
 
 run_remote_root "install -m 644 '$release_dir/$SERVICE_NAME.service' '/etc/systemd/system/$SERVICE_NAME.service'"
