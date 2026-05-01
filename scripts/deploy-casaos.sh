@@ -123,7 +123,7 @@ rsync -az -e "$RSYNC_RSH" --delete \
 printf 'Installing dependencies on remote...\n'
 ssh "${SSH_OPTS[@]}" "$REMOTE" "set -euo pipefail
 cd '$release_dir'
-npm ci
+npm ci --legacy-peer-deps
 ln -sfn '$release_dir' '$REMOTE_DIR/current.tmp'
 mv -Tf '$REMOTE_DIR/current.tmp' '$REMOTE_DIR/current'
 "
