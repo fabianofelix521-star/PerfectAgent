@@ -875,7 +875,7 @@ function seedTools(): Tool[] {
     {
       id: "tl-search",
       name: "Web Search",
-      description: "Search the web (DuckDuckGo HTML).",
+      description: "Search the web with multi-source fallback.",
       kind: "websearch",
       enabled: true,
       builtIn: true,

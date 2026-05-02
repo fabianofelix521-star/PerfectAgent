@@ -13,6 +13,7 @@ interface SearchResult {
   title?: string;
   url?: string;
   snippet?: string;
+  source?: string;
 }
 
 export async function buildRuntimeToolingContext({
@@ -45,8 +46,8 @@ export async function buildRuntimeToolingContext({
     sections.push(
       [
         "## Ferramentas habilitadas no sistema",
-        "Quando uma ferramenta for relevante, emita um bloco <tool_call> para execucao real pelo Nexus Ultra AGI. Nao escreva pseudo-JavaScript nem finja que executou.",
-        "Formato exato: <tool_call><function=Nome da Tool><parameter=parametro>valor</parameter></function></tool_call>. Depois da execucao, o chat anexara os resultados reais.",
+        "Quando uma ferramenta for relevante, emita um bloco <tool_call> para execucao real pelo Nexus Ultra AGI. Nao escreva pseudo-JavaScript, nao envolva tool_call em ``` e nao finja que executou.",
+        "Formato exato fora de code fence: <tool_call><function=Nome da Tool><parameter=parametro>valor</parameter></function></tool_call>. Depois da execucao, o chat anexara os resultados reais e continuara a resposta.",
         ...tools.slice(0, 24).map(formatTool),
       ].join("\n"),
     );
@@ -86,40 +87,44 @@ async function runLiveWebResearch(
   prompt: string,
   tools: Tool[],
 ): Promise<string | undefined> {
-  const webTool =
-    tools.find((tool) => tool.id === "tl-open-websearch" && tool.enabled) ??
-    tools.find((tool) => tool.kind === "websearch" && tool.enabled);
-  if (!webTool) return undefined;
-
-  const args = {
-    ...(webTool.config ?? {}),
-    query: prompt,
-    maxResults: 6,
-  };
+  const webTools = selectWebResearchTools(prompt, tools);
+  if (!webTools.length) return undefined;
 
   try {
-    const response = await api.runTool({
-      kind: "websearch",
-      args,
-    });
-    if (!response.ok) {
-      return [
-        "## Pesquisa web em tempo real",
-        `Falhou ao buscar: ${response.error ?? "erro desconhecido"}`,
-      ].join("\n");
-    }
-    const result = normalizeSearchResult(response.result);
-    const rows = result.results
-      .slice(0, 6)
+    const responses = await Promise.all(
+      webTools.map(async (tool) => {
+        const response = await api.runTool({
+          kind: "websearch",
+          args: {
+            ...(tool.config ?? {}),
+            query: prompt,
+            maxResults: isMedicalPrompt(prompt) ? 10 : 6,
+          },
+        });
+        return { tool, response };
+      }),
+    );
+    const failures = responses
+      .filter(({ response }) => !response.ok)
+      .map(({ tool, response }) => `${tool.name}: ${response.error ?? "erro desconhecido"}`);
+    const merged = dedupeSearchResults(
+      responses.flatMap(({ response }) =>
+        response.ok ? normalizeSearchResult(response.result).results : [],
+      ),
+    );
+    const rows = merged
+      .slice(0, isMedicalPrompt(prompt) ? 14 : 8)
       .map(
         (item, index) =>
-          `${index + 1}. ${item.title ?? "Sem titulo"}\n   ${item.url ?? ""}\n   ${item.snippet ?? ""}`,
+          `${index + 1}. ${item.title ?? "Sem titulo"}${item.source ? ` [${item.source}]` : ""}\n   ${item.url ?? ""}\n   ${item.snippet ?? ""}`,
       );
     return [
       "## Pesquisa web em tempo real",
-      `Query: ${result.query || prompt}`,
+      `Ferramentas usadas: ${webTools.map((tool) => tool.name).join(", ")}`,
+      `Query: ${prompt}`,
       "Resultados para usar como contexto verificavel:",
       rows.length ? rows.join("\n") : "Nenhum resultado retornado.",
+      failures.length ? `Falhas parciais: ${failures.join("; ")}` : "",
     ].join("\n");
   } catch (error) {
     return [
@@ -127,6 +132,46 @@ async function runLiveWebResearch(
       `Falhou ao buscar: ${error instanceof Error ? error.message : String(error)}`,
     ].join("\n");
   }
+}
+
+function selectWebResearchTools(prompt: string, tools: Tool[]): Tool[] {
+  const enabled = tools.filter((tool) => tool.enabled && tool.kind === "websearch");
+  if (!enabled.length) return [];
+  const priority = isMedicalPrompt(prompt)
+    ? [
+        "tl-openclaw-medical-search",
+        "tl-open-websearch",
+        "tl-autoresearch",
+        "tl-autoresearch-claw",
+        "tl-search",
+      ]
+    : ["tl-open-websearch", "tl-autoresearch", "tl-autoresearch-claw", "tl-search"];
+  const selected = priority
+    .map((id) => enabled.find((tool) => tool.id === id))
+    .filter((tool): tool is Tool => Boolean(tool));
+  for (const tool of enabled) {
+    if (!selected.some((item) => item.id === tool.id)) selected.push(tool);
+  }
+  return selected.slice(0, isMedicalPrompt(prompt) ? 5 : 3);
+}
+
+function dedupeSearchResults(results: SearchResult[]): SearchResult[] {
+  const seen = new Set<string>();
+  const deduped: SearchResult[] = [];
+  for (const result of results) {
+    const key = (result.url || result.title || "")
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(result);
+  }
+  return deduped;
+}
+
+function isMedicalPrompt(prompt: string): boolean {
+  return /\b(medic|medic[ai]na|clinical|trial|pubmed|doenca|doença|tratamento|cancer|tumor|dose|dosage|compound|composto|sleep|cortisol|human|elderly|neuro|amyloid|l-theanine|theanine|hippocrates|asclepius|apollo|openc?law)\b/i.test(prompt);
 }
 
 function normalizeSearchResult(value: unknown): {
@@ -144,6 +189,7 @@ function normalizeSearchResult(value: unknown): {
         title: typeof item.title === "string" ? item.title : undefined,
         url: typeof item.url === "string" ? item.url : undefined,
         snippet: typeof item.snippet === "string" ? item.snippet : undefined,
+        source: typeof item.source === "string" ? item.source : undefined,
       })),
   };
 }

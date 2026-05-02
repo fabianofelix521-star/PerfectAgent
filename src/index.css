@@ -133,6 +133,13 @@ input {
   }
 }
 
+.nexus-compact-control :where(button, select, input, textarea),
+.nexus-mobile-chat-pickers :where(button, select, input, textarea),
+.message-action-bar :where(button) {
+  min-width: 0;
+  min-height: 0;
+}
+
 /* Focus rings (a11y) */
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.55);
@@ -379,6 +386,48 @@ input {
   textarea,
   select {
     font-size: 16px !important;
+  }
+
+  .nexus-compact-control :where(select, input, textarea) {
+    font-size: 9px !important;
+  }
+
+  .nexus-mobile-chat-pickers :where(button, select) {
+    min-height: 20px !important;
+    min-width: 0 !important;
+  }
+
+  .nexus-header-action {
+    min-height: 34px !important;
+    min-width: 0 !important;
+    max-width: 100%;
+    padding: 7px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .message-action-bar {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 4px !important;
+    width: min(128px, 100%);
+  }
+
+  .message-action-bar button {
+    min-height: 26px !important;
+    min-width: 0 !important;
+    justify-content: center;
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .chat-surface :where(.fx-card, [class*="rounded-3xl"], [class*="rounded-[24px]"]) {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .chat-surface :where(h1, h2, h3, p, span, code, pre, button, a) {
+    overflow-wrap: anywhere;
   }
 
   .app-scrollbar::-webkit-scrollbar {

@@ -78,7 +78,7 @@ export function ExtensionsPage() {
       action={<HeaderAction icon={Plus} label="Novo servidor" onClick={() => setCreating(true)} />}
     >
       <Surface>
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold text-slate-950">Servidores configurados</h2>
             <p className="mt-1 text-xs font-medium text-slate-500">
@@ -101,16 +101,16 @@ export function ExtensionsPage() {
         ) : (
           <div className="space-y-3">
             {servers.map((m) => (
-              <div key={m.id} className="rounded-3xl border border-white/70 bg-white/60 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+              <div key={m.id} className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#17172d] text-white"><Blocks className="h-5 w-5" /></span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-semibold text-slate-950">{m.name}</h3>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="min-w-0 break-words text-sm font-semibold text-slate-950 sm:text-base">{m.name}</h3>
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">{m.transport}</span>
                       </div>
-                      <p className="mt-1 truncate font-mono text-[11px] text-slate-500">{m.url ?? m.command ?? "—"}</p>
+                      <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{m.url ?? m.command ?? "—"}</p>
                     </div>
                   </div>
                   <StatusBadge status={m.lastTest?.ok ? "Conectado" : m.lastTest ? "Erro" : "Pronto"} />
@@ -131,7 +131,7 @@ export function ExtensionsPage() {
                         <button key={t.name} onClick={() => setCalling({ server: m, toolName: t.name })}
                           className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-400">
                           <div className="flex items-center justify-between">
-                            <span className="font-mono text-xs font-bold text-slate-900">{t.name}</span>
+                            <span className="min-w-0 break-all font-mono text-xs font-bold text-slate-900">{t.name}</span>
                             <Play className="h-3 w-3 text-slate-400" />
                           </div>
                           {t.description && <p className="mt-1 text-[11px] text-slate-500">{t.description}</p>}
@@ -141,7 +141,7 @@ export function ExtensionsPage() {
                   </div>
                 )}
 
-                <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
                   <button onClick={() => refreshTools(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                     {busyId === m.id ? <Spinner size={12} /> : <RefreshCw className="h-3 w-3" />} Atualizar tools
                   </button>
@@ -172,12 +172,12 @@ export function ExtensionsPage() {
               installedCatalogIds.has(definition.id) ||
               installedCatalogIds.has(`mcp-${definition.id}`);
             return (
-              <div key={definition.id} className="rounded-3xl border border-white/70 bg-white/60 p-4">
+              <div key={definition.id} className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <span className="text-xl" aria-hidden="true">{definition.icon}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="truncate text-sm font-bold text-slate-950">{definition.name}</h3>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 break-words text-sm font-bold text-slate-950">{definition.name}</h3>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
                         {definition.category}
                       </span>
@@ -185,7 +185,7 @@ export function ExtensionsPage() {
                     <p className="mt-1 line-clamp-2 text-xs font-medium text-slate-500">
                       {definition.description}
                     </p>
-                    <p className="mt-2 truncate font-mono text-[11px] text-slate-500">
+                    <p className="mt-2 break-all font-mono text-[11px] text-slate-500">
                       {definition.package}
                     </p>
                   </div>

@@ -65,7 +65,7 @@ export function SkillsPage() {
       action={<HeaderAction icon={Plus} label="Nova skill" onClick={() => setCreating(true)} />}
     >
       <Surface className="mb-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
               Skill Stores
@@ -74,7 +74,7 @@ export function SkillsPage() {
               Lojas e bancos conectados
             </h2>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600">
+          <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600">
             <Store className="h-3.5 w-3.5" />
             ClawHub + SkillsMP
           </span>
@@ -87,7 +87,7 @@ export function SkillsPage() {
             return (
               <div
                 key={marketplace.id}
-                className="rounded-3xl border border-white/70 bg-white/60 p-4"
+                className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -107,10 +107,10 @@ export function SkillsPage() {
                     <Tag key={tag}>{tag}</Tag>
                   ))}
                 </div>
-                <p className="mt-3 rounded-2xl bg-slate-950/5 p-3 text-[11px] font-mono leading-5 text-slate-600">
+                <p className="mt-3 break-all rounded-2xl bg-slate-950/5 p-3 text-[11px] font-mono leading-5 text-slate-600">
                   {marketplace.localPath ?? marketplace.url}
                 </p>
-                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
                   {marketplace.url ? (
                     <button
                       type="button"
@@ -188,16 +188,16 @@ function marketplaceToSkill(marketplace: SkillMarketplace): Skill {
 
 function SkillCard({ skill, onToggle, onEdit, onDelete }: { skill: Skill; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="rounded-3xl border border-white/70 bg-white/60 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#17172d] text-white"><BrainCircuit className="h-5 w-5" /></span>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-slate-950">{skill.name}</h3>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="min-w-0 break-words text-sm font-semibold text-slate-950 sm:text-base">{skill.name}</h3>
               {skill.builtIn && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">Built-in</span>}
             </div>
-            <p className="mt-1 text-xs font-medium text-slate-500">{skill.description}</p>
+            <p className="mt-1 break-words text-xs font-medium text-slate-500">{skill.description}</p>
           </div>
         </div>
         <button onClick={onToggle} className={`relative h-6 w-11 shrink-0 rounded-full transition ${skill.enabled ? "bg-emerald-500" : "bg-slate-300"}`}>
@@ -205,10 +205,10 @@ function SkillCard({ skill, onToggle, onEdit, onDelete }: { skill: Skill; onTogg
         </button>
       </div>
       <div className="mt-4 flex flex-wrap gap-1.5">{skill.tags.map((t) => <Tag key={t}>{t}</Tag>)}</div>
-      <div className="mt-4 max-h-24 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-[11px] font-mono text-slate-600">
+      <div className="mt-4 max-h-24 overflow-hidden break-words rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-[11px] font-mono text-slate-600">
         {skill.systemPrompt.slice(0, 280)}{skill.systemPrompt.length > 280 ? "..." : ""}
       </div>
-      <div className="mt-3 flex justify-end gap-2">
+      <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
         <button onClick={onEdit} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
           <Pencil className="h-3 w-3" /> Editar
         </button>

@@ -46,7 +46,7 @@ export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
       description="Modelos, governança, aparência e segurança em um só lugar."
       action={<BackendStatusBadge />}
     >
-      <div className="mb-5 flex flex-wrap gap-2 rounded-full bg-white/50 p-1 shadow-inner">
+      <div className="mb-5 flex min-w-0 flex-wrap gap-1.5 rounded-2xl bg-white/50 p-1 shadow-inner sm:gap-2 sm:rounded-full">
         {[
           { id: "models" as const, label: "Modelos", icon: Brain },
           { id: "memory" as const, label: "Memória", icon: Database },
@@ -60,7 +60,7 @@ export function SettingsPage({ initialTab = "models" }: { initialTab?: Tab }) {
           const I = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={cn("inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition",
+              className={cn("inline-flex min-w-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition sm:gap-2 sm:px-5 sm:py-2.5 sm:text-sm",
                 tab === t.id ? "bg-[#17172d] text-white shadow-lg" : "text-slate-600 hover:text-slate-950")}>
               <I className="h-4 w-4" />{t.label}
             </button>
@@ -291,10 +291,10 @@ function ModelsTab() {
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-      <Surface>
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+      <Surface className="min-w-0">
         <SectionTitle icon={Brain} title="Provedores de IA" desc="Configure baseURL, chave de API, busque modelos e teste a conexão." />
-        <div className="mt-4 grid gap-3 rounded-[20px] border border-white/70 bg-white/55 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <div className="mt-4 grid min-w-0 gap-3 rounded-[20px] border border-white/70 bg-white/55 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <SelectControl<string>
             label="Adicionar provider"
             value={newProviderPresetId}
@@ -307,12 +307,12 @@ function ModelsTab() {
           <button
             type="button"
             onClick={addProviderInstance}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white"
+            className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#17172d] px-3 py-2.5 text-xs font-bold text-white sm:gap-2 sm:px-4 sm:text-sm"
           >
-            <Plus className="h-4 w-4" />Adicionar instância
+            <Plus className="h-4 w-4" />Adicionar<span className="hidden sm:inline"> instância</span>
           </button>
         </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
           {sorted.map((p) => (
             <ProviderCard
               key={p.id}
@@ -325,7 +325,7 @@ function ModelsTab() {
         </div>
       </Surface>
 
-      <Surface className="space-y-5">
+      <Surface className="min-w-0 space-y-5">
         <SectionTitle icon={KeyRound} title="Fallbacks legados" desc="Chat, Code Studio e runtimes agora usam a seleção local. Estes campos ficam só para compatibilidade com fluxos antigos." />
         {providerOptions.length ? (
           <SelectControl<string>
@@ -362,7 +362,7 @@ function ModelsTab() {
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Model registry</div>
           <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
             {models.map((m) => (
-              <div key={`${m.providerId}:${m.id}`} className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs">
+              <div key={`${m.providerId}:${m.id}`} className="flex min-w-0 items-center justify-between gap-2 rounded-xl bg-white px-2 py-2 text-[11px] sm:px-3 sm:text-xs">
                 <button
                   type="button"
                   onClick={() => setModelEnabled(m.providerId, m.id, !m.enabled)}
@@ -384,7 +384,7 @@ function ModelsTab() {
               options={sorted.map((p) => ({ value: p.id, label: p.name }))}
             />
             <EditableField label="Novo model ID" value={newModelId} onChange={setNewModelId} placeholder="ex: gpt-4.1-mini" />
-            <button type="button" onClick={addCustomModel} className="rounded-full bg-[#17172d] px-4 py-2 text-sm font-bold text-white">
+            <button type="button" onClick={addCustomModel} className="inline-flex min-w-0 items-center justify-center rounded-full bg-[#17172d] px-4 py-2 text-sm font-bold text-white">
               <Plus className="mr-1 inline h-4 w-4" />Adicionar modelo
             </button>
           </div>
@@ -411,11 +411,11 @@ function ProviderCard({
   onRemove?: () => void;
 }) {
   return (
-    <div className="rounded-[24px] border border-white/70 bg-white/55 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-slate-950">{cfg.name}</h3>
-          <p className="mt-1 text-xs font-medium text-slate-500">{cfg.spec.baseUrl}</p>
+    <div className="min-w-0 overflow-hidden rounded-[24px] border border-white/70 bg-white/55 p-3 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="break-words font-semibold text-slate-950">{cfg.name}</h3>
+          <p className="mt-1 break-all text-xs font-medium text-slate-500">{cfg.spec.baseUrl}</p>
         </div>
         <button
           type="button"
@@ -441,8 +441,8 @@ function ProviderCard({
           {cfg.lastTest.ok ? `OK ${cfg.lastTest.latencyMs}ms` : (cfg.lastTest.error ?? `HTTP ${cfg.lastTest.status}`)}
         </div>
       ) : null}
-      <div className="mt-4 flex gap-2">
-        <button onClick={onEdit} className="flex-1 rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <button onClick={onEdit} className="min-w-0 flex-1 rounded-full bg-[#17172d] px-4 py-2.5 text-sm font-bold text-white">
           Configurar
         </button>
         {onRemove ? (
@@ -634,7 +634,7 @@ function GeneralTab() {
         active={settings.autoSave} onToggle={() => setSettings({ autoSave: !settings.autoSave })} />
       <ToggleRow title="Telemetria" desc="Enviar métricas anônimas de uso."
         active={settings.telemetry} onToggle={() => setSettings({ telemetry: !settings.telemetry })} />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         <button onClick={handleExport} className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm">
           <Download className="h-4 w-4" />Exportar
         </button>

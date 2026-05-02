@@ -32,7 +32,9 @@ Procedimento mínimo:
 2. Buscar fontes primárias quando possível.
 3. Separar evidência observada de inferência.
 4. Citar URLs/títulos relevantes no output quando usar web.
-5. Declarar lacunas quando a busca falhar ou quando a fonte não sustentar a conclusão.`;
+5. Declarar lacunas quando a busca falhar ou quando a fonte não sustentar a conclusão.
+
+Para medicina, biomedicina e suplementos, usar todas as ferramentas de pesquisa habilitadas: OpenClaw Medical Search, Open WebSearch, AutoResearch, AutoResearchClaw e Web Search. Priorizar PubMed, ClinicalTrials.gov, OpenAlex/Crossref e fontes primárias; se uma consulta com aspas retornar vazio, relaxar a consulta e repetir sem aspas/filtros excessivos antes de concluir que não existe evidência.`;
 
 export const NEXUS_SYSTEM_AWARENESS_RULE = `CONTEXTO OPERACIONAL DO NEXUS ULTRA AGI:
 Você está rodando dentro do Nexus Ultra AGI, não em um chat genérico. O app tem stores persistidas para skills, tools, providers, models, runtimes e projetos.
