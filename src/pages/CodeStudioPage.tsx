@@ -57,6 +57,7 @@ import {
 } from "@/services/configSelectors";
 import { createAdapter } from "@/services/adapters";
 import { runAgentLoop, type AgentEvent } from "@/services/agentLoop";
+import { buildRuntimeToolingContext } from "@/services/runtimeToolingContext";
 import { filesToWebContainerTree, previewManager } from "@/services/previewManager";
 import { webContainerService } from "@/services/webcontainer";
 import {
@@ -621,7 +622,6 @@ function ChatPreviewTab({
   const providers = useConfig((s) => s.providers);
   const models = useConfig((s) => s.models);
   const runtimes = useConfig((s) => s.runtimes);
-  const skills = useConfig((s) => s.skills);
   const sel = useConfig((s) => s.studioSelection);
   const setSel = useConfig((s) => s.setStudioSelection);
   const threads = useConfig((s) => s.studioThreads);
@@ -911,15 +911,11 @@ function ChatPreviewTab({
       return;
     }
 
-    // Build system context from skills
-    const activeSkills = skills.filter(
-      (sk) => sk.enabled || (sel.skillIds ?? []).includes(sk.id),
-    );
-    const skillContext = activeSkills.length
-      ? activeSkills
-          .map((sk) => `# ${sk.name}\n${sk.systemPrompt}`)
-          .join("\n\n---\n\n")
-      : undefined;
+    const toolingContext = await buildRuntimeToolingContext({
+      prompt: generationRequest,
+      selectedSkillIds: sel.skillIds,
+      includeLiveWebSearch: true,
+    });
 
     const ctrl = new AbortController();
     let userStopped = false;
@@ -984,7 +980,7 @@ function ChatPreviewTab({
     const systemContext =
       [
         pantheonContext,
-        skillContext,
+        toolingContext,
         projectContext,
         recentContext,
         continuationContext,
@@ -1139,6 +1135,16 @@ function ChatPreviewTab({
     () => webContainerService.getSupportStatus(),
     [previewState.status, previewState.message],
   );
+  async function copyWebContainerTunnelHint() {
+    const text = webContainerSupport.sshTunnelCommand ?? webContainerSupport.suggestedLocalUrl;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Comando copiado.");
+    } catch {
+      toast.error("Nao foi possivel copiar automaticamente.");
+    }
+  }
 
   // Format elapsed
   const elapsedStr =
@@ -1351,9 +1357,34 @@ function ChatPreviewTab({
           <p>SharedArrayBuffer: {String(webContainerSupport.hasSharedArrayBuffer)}</p>
           <p>iframe: {String(webContainerSupport.inIframe)}</p>
           <p>host: {webContainerSupport.host ?? "unknown"}</p>
+          {webContainerSupport.sshTunnelCommand ? (
+            <div className="mt-2 space-y-1 rounded-lg border border-amber-100 bg-amber-50/70 p-2 text-amber-900">
+              <p className="font-semibold">Host SSH/LAN detectado</p>
+              <p>Rode na sua maquina:</p>
+              <code className="block break-all rounded bg-white/80 px-2 py-1 font-mono text-[10px] text-slate-700">
+                {webContainerSupport.sshTunnelCommand}
+              </code>
+              <p>
+                Depois abra:{" "}
+                <span className="break-all font-mono text-[10px]">
+                  {webContainerSupport.suggestedLocalUrl}
+                </span>
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className="flex flex-wrap justify-center gap-2">
+        {webContainerSupport.sshTunnelCommand ? (
+          <button
+            type="button"
+            onClick={copyWebContainerTunnelHint}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white shadow hover:bg-amber-600"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Copiar tunnel SSH
+          </button>
+        ) : null}
         {!webContainerSupport.supported ? (
           <button
             type="button"

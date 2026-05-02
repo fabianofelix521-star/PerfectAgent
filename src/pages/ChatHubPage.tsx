@@ -32,6 +32,8 @@ import {
 } from "@/services/configSelectors";
 import { api } from "@/services/api";
 import { createAdapter } from "@/services/adapters";
+import { executeInlineToolCalls } from "@/services/inlineToolCalls";
+import { buildRuntimeToolingContext } from "@/services/runtimeToolingContext";
 import { cn } from "@/utils/cn";
 import { memoryEngine } from "@/core/ai/memory/MemoryEngine";
 import { useSmartScroll } from "@/shared/hooks/useSmartScroll";
@@ -557,6 +559,11 @@ export function ChatHubPage() {
       content: msg.content,
       createdAt,
     }));
+    const runtimeToolingContext = await buildRuntimeToolingContext({
+      prompt: clean,
+      selectedSkillIds: selection.skillIds,
+      includeLiveWebSearch: true,
+    });
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -581,6 +588,7 @@ export function ChatHubPage() {
                   {
                     spec,
                     model: modelId,
+                    systemPrompt: runtimeToolingContext,
                     signal: abortController.signal,
                   },
                   (chunk) => {
@@ -613,10 +621,15 @@ export function ChatHubPage() {
           : api.streamChat({
               spec,
               model: modelId,
-              messages: memoryAugmentedHistory.map((msg) => ({
-                role: msg.role,
-                content: msg.content,
-              })),
+              messages: [
+                ...(runtimeToolingContext
+                  ? [{ role: "system" as const, content: runtimeToolingContext }]
+                  : []),
+                ...memoryAugmentedHistory.map((msg) => ({
+                  role: msg.role,
+                  content: msg.content,
+                })),
+              ],
               temperature: 0.7,
               onToken: (delta) => {
                 acc += delta;
@@ -632,7 +645,12 @@ export function ChatHubPage() {
           finish();
         };
       });
-      patchMessage(thread.id, assistantId, { content: acc, streaming: false });
+      const toolExecution = await executeInlineToolCalls(acc);
+      const finalContent = toolExecution.content;
+      patchMessage(thread.id, assistantId, {
+        content: finalContent,
+        streaming: false,
+      });
       scrollToBottom();
       await memoryEngine.remember({
         agentId: thread.id,
@@ -643,12 +661,12 @@ export function ChatHubPage() {
       });
       await memoryEngine.remember({
         agentId: thread.id,
-        content: acc,
+        content: finalContent,
         type: "assistant_message",
         importance: 0.6,
         tags: ["chat", "assistant"],
       });
-      speakAssistantText(acc, shouldResumeRealtimeVoice);
+      speakAssistantText(finalContent, shouldResumeRealtimeVoice);
     } catch (err) {
       const message = (err as Error).message;
       patchMessage(thread.id, assistantId, {
@@ -688,7 +706,7 @@ export function ChatHubPage() {
                 Conversa agêntica
               </h1>
             </div>
-            <div className="grid w-full grid-cols-2 gap-2 md:hidden">
+            <div className="grid w-full max-w-[280px] grid-cols-1 gap-1.5 md:hidden">
               <LabeledSelect
                 label="Provider"
                 value={providerId ?? ""}
@@ -702,7 +720,7 @@ export function ChatHubPage() {
                   label: `${provider.name}${providerIsUsable(provider) ? "" : " (disabled)"}`,
                 }))}
                 emptyLabel="Configure providers"
-                className="min-w-0 px-2.5 py-2"
+                className="min-w-0 rounded-xl px-2 py-1.5"
               />
               <LabeledSelect
                 label="Model"
@@ -713,7 +731,7 @@ export function ChatHubPage() {
                   label: model.label,
                 }))}
                 emptyLabel="No enabled models"
-                className="min-w-0 px-2.5 py-2"
+                className="min-w-0 rounded-xl px-2 py-1.5"
               />
               <LabeledSelect
                 label="Runtime"
@@ -731,7 +749,7 @@ export function ChatHubPage() {
                   })),
                 ]}
                 emptyLabel="Direct Provider"
-                className="min-w-0 px-2.5 py-2"
+                className="min-w-0 rounded-xl px-2 py-1.5"
               />
               <MobileVoiceControl
                 voiceEnabled={voiceEnabled}
@@ -1139,16 +1157,16 @@ function MobileVoiceControl({
   onMicClick: () => void;
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-white/70 bg-white/75 px-2.5 py-2 shadow-inner">
+    <div className="min-w-0 rounded-xl border border-white/70 bg-white/75 px-2 py-1.5 shadow-inner">
       <div className="flex items-center justify-between gap-2">
-        <span className="block min-w-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+        <span className="block min-w-0 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
           Voice
         </span>
         <button
           type="button"
           onClick={onToggle}
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold transition",
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold transition",
             voiceEnabled ? "bg-[#17172d] text-white" : "bg-white text-slate-700",
           )}
         >
@@ -1157,7 +1175,7 @@ function MobileVoiceControl({
         </button>
       </div>
       {voiceEnabled ? (
-        <div className="mt-2 space-y-2">
+        <div className="mt-1.5 space-y-1.5">
           <CompactMobileSelect
             label="Mode"
             value={voiceMode}
@@ -1175,7 +1193,7 @@ function MobileVoiceControl({
             onClick={onMicClick}
             disabled={!canUseSpeechRecognition}
             className={cn(
-              "inline-flex w-full items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-[10px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50",
+              "inline-flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50",
               voiceListening
                 ? "bg-rose-100 text-rose-700"
                 : "bg-white text-slate-700",
@@ -1187,7 +1205,7 @@ function MobileVoiceControl({
           </button>
         </div>
       ) : (
-        <p className="mt-2 text-[10px] font-semibold text-slate-400">
+        <p className="mt-1 text-[10px] font-semibold text-slate-400">
           Voice off
         </p>
       )}
@@ -1207,14 +1225,14 @@ function CompactMobileSelect({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="block rounded-xl border border-white/70 bg-white/80 px-2 py-1.5">
+    <label className="block rounded-lg border border-white/70 bg-white/80 px-2 py-1">
       <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full bg-transparent text-[10px] font-bold text-slate-800 outline-none"
+        className="mt-0.5 w-full bg-transparent text-[10px] font-bold text-slate-800 outline-none"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -1243,14 +1261,14 @@ function LabeledSelect({
 }) {
   return (
     <label className={cn("rounded-2xl border border-white/70 bg-white/75 px-3 py-2 shadow-inner", className)}>
-      <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+      <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-[10px]">
         {label}
       </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         disabled={options.length === 0}
-        className="mt-1 w-full bg-transparent text-xs font-bold text-slate-900 outline-none disabled:text-slate-400 sm:text-sm"
+        className="mt-0.5 w-full bg-transparent text-[11px] font-bold text-slate-900 outline-none disabled:text-slate-400 sm:mt-1 sm:text-sm"
       >
         {options.length === 0 ? <option value="">{emptyLabel}</option> : null}
         {options.map((option) => (

@@ -36,6 +36,7 @@ export class AegisRuntime extends SupremeRuntime {
       name: "Aegis",
       domain: "Continuous cybersecurity defense",
       mission: "Protect Nexus Ultra AGI through perimeter, application, data, threat-intel and AI-security layers.",
+      systemAccess: true,
       safetyNotice: "Aegis is defensive security. Offensive exploitation, credential theft, persistence, malware and unauthorized access are outside runtime scope.",
       agents: AEGIS_AGENTS,
     });

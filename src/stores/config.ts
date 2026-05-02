@@ -656,6 +656,116 @@ export function buildSpecFromConfig(cfg: ProviderConfig): ProviderConfig["spec"]
 function seedSkills(): Skill[] {
   return [
     {
+      id: "sk-live-web-research",
+      name: "Live Web Research",
+      description:
+        "Pesquisa web real com fontes, sintese verificavel e citacoes.",
+      systemPrompt:
+        "Voce tem acesso a pesquisa web real. Quando a tarefa depender de fatos atuais, fontes externas ou verificacao, use o stack de web research antes de responder: gere consultas especificas, priorize fontes primarias, compare resultados e cite URLs/titulos encontrados.",
+      tags: ["research", "web", "citations"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-autoresearch",
+      name: "AutoResearch",
+      description:
+        "Banco de skill inspirado em karpathy/autoresearch para pesquisa autonoma.",
+      systemPrompt:
+        "Use o padrao AutoResearch: decompor a pergunta em subquestoes, pesquisar fontes relevantes, extrair evidencias, reconciliar conflitos e entregar sintese acionavel com links. Prefira fontes primarias, documentacao oficial, papers, repositorios e dados verificaveis.",
+      tags: ["autoresearch", "research", "web"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-autoresearch-claw",
+      name: "AutoResearchClaw",
+      description:
+        "Pesquisa multi-etapas baseada em AutoResearchClaw para coleta, ranking e sintese.",
+      systemPrompt:
+        "Use o padrao AutoResearchClaw: planejar consultas, coletar resultados web, ranquear qualidade das fontes, sintetizar conclusoes e registrar incertezas. Quando houver claims factuais, amarre cada claim a evidencias rastreaveis.",
+      tags: ["autoresearchclaw", "research", "claw"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-open-websearch",
+      name: "Open WebSearch",
+      description:
+        "Adaptador de busca aberta para runtimes e chats com resultado estruturado.",
+      systemPrompt:
+        "Use open-webSearch como camada padrao de busca: formular query curta e precisa, ler titulos/snippets, abrir/validar fontes quando necessario, e separar fatos confirmados de inferencias.",
+      tags: ["open-websearch", "web", "tools"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-clawhub",
+      name: "ClawHub Skill Bank",
+      description:
+        "Banco de skills ClawHub para descoberta e composicao de capacidades.",
+      systemPrompt:
+        "Considere ClawHub como banco de habilidades reutilizaveis. Ao executar tarefas complexas, selecione habilidades adequadas, combine-as em pipeline e explicite quais capacidades foram usadas: pesquisa, codigo, filesystem, navegador, shell, deploy, analise ou midia.",
+      tags: ["clawhub", "skills", "bank"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-skillsmp-marketplace",
+      name: "SkillsMP Marketplace",
+      description:
+        "Loja pública de skills para descobrir e instalar capacidades externas.",
+      systemPrompt:
+        "Use SkillsMP como marketplace de skills externas. Quando o usuário pedir uma skill, pesquise no SkillsMP, abra a fonte oficial, instale a skill no filesystem/catalogo do Nexus Ultra AGI e valide que ela aparece em Skills/Tools.",
+      tags: ["skillsmp", "marketplace", "skills"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-felixsuperclaw-local",
+      name: "FelixSuperClaw Local Bank",
+      description:
+        "Instalacao local detectada/procuravel com skills OpenClaw e plugins.",
+      systemPrompt:
+        "Use a instalacao local FelixSuperClaw/OpenClaw quando precisar descobrir skills, plugins e ferramentas locais. Caminhos candidatos: /Users/felix/felixsuperclaw, $HOME/felixsuperclaw, /DATA/AppData/openclaw, /DATA/AppData/OpenClaw, /DATA/AppData/crowagent. Liste primeiro o indice local antes de afirmar que uma skill nao existe.",
+      tags: ["clawhub", "openclaw", "local-bank"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-openclaw-medical",
+      name: "OpenClaw Medical Skills",
+      description:
+        "Skill bank medico para pesquisa biomédica, evidencias clinicas e mecanismos.",
+      systemPrompt:
+        "Para tarefas biomedicas, use o padrao OpenClaw-Medical-Skills: buscar PubMed/ClinicalTrials/fontes primarias, classificar nivel de evidencia, separar mecanistica de evidencia clinica, identificar riscos/interacoes e manter disclaimer final quando houver implicacao clinica.",
+      tags: ["openclaw", "medical", "hippocrates"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-ui-ux-pro-max",
+      name: "UI/UX Pro Max",
+      description:
+        "Skill instalada para design intelligence, design systems, UI review, UX, acessibilidade, paletas, tipografia e stacks frontend.",
+      systemPrompt:
+        "Use UI/UX Pro Max para qualquer tarefa que altere aparencia, experiencia, layout, componentes, design system, responsividade, acessibilidade, mobile ou frontend. A skill esta instalada em .codex/skills/ui-ux-pro-max. Fluxo obrigatorio: analisar produto/audiencia/stack, executar quando possivel `python3 .codex/skills/ui-ux-pro-max/scripts/search.py \"<produto industria estilo>\" --design-system -p \"<nome>\"`, aplicar recomendacoes de estilo/cor/tipografia/anti-patterns, validar touch targets, contraste, responsive e estados interativos.",
+      tags: ["ui", "ux", "design-system", "frontend"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-system-operator",
+      name: "System Operator",
+      description:
+        "Capacidade operacional para filesystem, shell, instalacao de ferramentas e deploy.",
+      systemPrompt:
+        "Quando a tarefa exigir operacao no sistema, use ferramentas de filesystem/shell de forma rastreavel: listar contexto, executar comandos com cwd explicito, relatar stdout/stderr, validar resultado e nunca persistir segredos em arquivos, prompts ou logs.",
+      tags: ["system", "shell", "filesystem", "deploy"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
       id: "sk-coder",
       name: "Coder",
       description: "Write production-grade code with explanations.",
@@ -772,6 +882,140 @@ function seedTools(): Tool[] {
       params: [{ key: "query", type: "string", required: true }],
     },
     {
+      id: "tl-autoresearch",
+      name: "AutoResearch Web",
+      description:
+        "Pesquisa web com fluxo AutoResearch: consulta, coleta, ranking e sintese.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: { queryPrefix: "autoresearch primary sources " },
+      params: [
+        { key: "query", type: "string", required: true },
+        {
+          key: "maxResults",
+          type: "number",
+          default: "8",
+          description: "Maximo de resultados",
+        },
+      ],
+    },
+    {
+      id: "tl-autoresearch-claw",
+      name: "AutoResearchClaw",
+      description:
+        "Busca orientada a AutoResearchClaw para pesquisa autonoma multi-fonte.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: { queryPrefix: "AutoResearchClaw evidence " },
+      params: [
+        { key: "query", type: "string", required: true },
+        { key: "maxResults", type: "number", default: "8" },
+      ],
+    },
+    {
+      id: "tl-open-websearch",
+      name: "Open WebSearch",
+      description:
+        "Adaptador open-webSearch para resultados web estruturados.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: { queryPrefix: "" },
+      params: [
+        { key: "query", type: "string", required: true },
+        { key: "maxResults", type: "number", default: "8" },
+      ],
+    },
+    {
+      id: "tl-clawhub-search",
+      name: "ClawHub Search",
+      description:
+        "Descobre bancos de skills, exemplos e capacidades ClawHub.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: { queryPrefix: "ClawHub skills repository " },
+      params: [
+        { key: "query", type: "string", required: true },
+        { key: "maxResults", type: "number", default: "8" },
+      ],
+    },
+    {
+      id: "tl-local-clawhub-index",
+      name: "Local ClawHub Index",
+      description:
+        "Lista skills e plugins OpenClaw instalados localmente em /Users/felix/felixsuperclaw.",
+      kind: "shell",
+      enabled: true,
+      builtIn: true,
+      params: [
+        {
+          key: "commandLine",
+          type: "string",
+          required: true,
+          default:
+            'bash -lc \'for root in "$HOME/felixsuperclaw" /Users/felix/felixsuperclaw /DATA/AppData/openclaw /DATA/AppData/OpenClaw /DATA/AppData/crowagent; do [ -d "$root" ] || continue; echo "ROOT=$root"; find "$root/.agents/skills" "$root/extensions" -maxdepth 2 "(" -name SKILL.md -o -name openclaw.plugin.json ")" 2>/dev/null; done\'',
+          description: "Comando de indice local",
+        },
+        { key: "cwd", type: "string", default: "." },
+        { key: "timeoutMs", type: "number", default: "30000" },
+      ],
+    },
+    {
+      id: "tl-openclaw-medical-search",
+      name: "OpenClaw Medical Search",
+      description:
+        "Pesquisa biomédica para Hippocrates Supreme via OpenClaw Medical Skills.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: {
+        queryPrefix:
+          "OpenClaw Medical Skills PubMed ClinicalTrials biomedical evidence ",
+      },
+      params: [
+        { key: "query", type: "string", required: true },
+        { key: "maxResults", type: "number", default: "8" },
+      ],
+    },
+    {
+      id: "tl-ui-ux-pro-max",
+      name: "UI/UX Pro Max Search",
+      description:
+        "Executa a skill local UI/UX Pro Max para gerar design system e recomendações de UI/UX.",
+      kind: "shell",
+      enabled: true,
+      builtIn: true,
+      params: [
+        {
+          key: "commandLine",
+          type: "string",
+          required: true,
+          default:
+            'python3 .codex/skills/ui-ux-pro-max/scripts/search.py "saas dashboard professional" --design-system -p "Nexus Ultra AGI"',
+          description: "Comando UI/UX Pro Max",
+        },
+        { key: "cwd", type: "string", default: "." },
+        { key: "timeoutMs", type: "number", default: "120000" },
+      ],
+    },
+    {
+      id: "tl-skillsmp-search",
+      name: "SkillsMP Search",
+      description:
+        "Pesquisa skills no marketplace SkillsMP.",
+      kind: "websearch",
+      enabled: true,
+      builtIn: true,
+      config: { queryPrefix: "site:skillsmp.com AI skill marketplace " },
+      params: [
+        { key: "query", type: "string", required: true },
+        { key: "maxResults", type: "number", default: "8" },
+      ],
+    },
+    {
       id: "tl-calc",
       name: "Calculator",
       description: "Evaluate a math expression.",
@@ -800,7 +1044,70 @@ function seedTools(): Tool[] {
         { key: "content", type: "string" },
       ],
     },
+    {
+      id: "tl-system-shell",
+      name: "System Access / Shell",
+      description:
+        "Executa comandos no host do app para diagnostico, instalacao e deploy.",
+      kind: "shell",
+      enabled: true,
+      builtIn: true,
+      params: [
+        {
+          key: "commandLine",
+          type: "string",
+          required: true,
+          default: "pwd",
+          description: "Comando completo",
+        },
+        {
+          key: "cwd",
+          type: "string",
+          default: ".",
+          description: "Diretorio de trabalho",
+        },
+        {
+          key: "timeoutMs",
+          type: "number",
+          default: "120000",
+          description: "Timeout em ms",
+        },
+      ],
+    },
   ];
+}
+
+function mergeSeededSkills(existing: Skill[] = []): Skill[] {
+  const seeded = seedSkills();
+  const byId = new Map<string, Skill>();
+  for (const skill of seeded) byId.set(skill.id, skill);
+  for (const skill of existing) {
+    const builtin = byId.get(skill.id);
+    byId.set(skill.id, {
+      ...(builtin ?? skill),
+      ...skill,
+      tags: skill.tags?.length ? skill.tags : (builtin?.tags ?? []),
+      builtIn: skill.builtIn ?? builtin?.builtIn,
+    });
+  }
+  return Array.from(byId.values());
+}
+
+function mergeSeededTools(existing: Tool[] = []): Tool[] {
+  const seeded = seedTools();
+  const byId = new Map<string, Tool>();
+  for (const tool of seeded) byId.set(tool.id, tool);
+  for (const tool of existing) {
+    const builtin = byId.get(tool.id);
+    byId.set(tool.id, {
+      ...(builtin ?? tool),
+      ...tool,
+      params: tool.params?.length ? tool.params : (builtin?.params ?? []),
+      config: { ...(builtin?.config ?? {}), ...(tool.config ?? {}) },
+      builtIn: tool.builtIn ?? builtin?.builtIn,
+    });
+  }
+  return Array.from(byId.values());
 }
 
 function seedIntegrations(): Integration[] {
@@ -838,8 +1145,8 @@ export const useConfig = create<ConfigState>()(
       studioThreads: [],
       activeStudioThreadId: undefined,
       deploys: [],
-      skills: seedSkills(),
-      tools: seedTools(),
+      skills: mergeSeededSkills(),
+      tools: mergeSeededTools(),
       integrations: seedIntegrations(),
       mcpServers: [],
       chatSelection: { skillIds: [] },
@@ -1318,6 +1625,8 @@ export const useConfig = create<ConfigState>()(
               ...DEFAULT_SETTINGS,
               ...((parsed as Partial<ConfigState>).settings ?? {}),
             }),
+            skills: mergeSeededSkills((parsed as Partial<ConfigState>).skills),
+            tools: mergeSeededTools((parsed as Partial<ConfigState>).tools),
           });
           return true;
         } catch {
@@ -1353,6 +1662,8 @@ export const useConfig = create<ConfigState>()(
           settings: normalizeBrandingSettings(settings),
           providers,
           models: modelsFromProviders(providers, state.models ?? []),
+          skills: mergeSeededSkills(state.skills ?? []),
+          tools: mergeSeededTools(state.tools ?? []),
           chatThreads: state.chatThreads ?? [],
           chatSelection: state.chatSelection ?? { skillIds: [] },
           studioSelection: { skillIds: [], ...(state.studioSelection ?? {}) },
@@ -1367,6 +1678,8 @@ export const useConfig = create<ConfigState>()(
         const providers = seedProviders(state.providers);
         state.providers = providers;
         state.models = modelsFromProviders(providers, state.models);
+        state.skills = mergeSeededSkills(state.skills);
+        state.tools = mergeSeededTools(state.tools);
         // Ensure built-in runtimes always exist (additive — never replaces user edits).
         const builtins = [
           seedRuntime(),

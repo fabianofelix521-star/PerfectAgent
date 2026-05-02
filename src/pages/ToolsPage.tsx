@@ -10,7 +10,7 @@ import { toast } from "@/components/Toast";
 function rid() { return `tl-${Math.random().toString(36).slice(2, 9)}`; }
 
 const KIND_LABEL: Record<ToolKind, string> = {
-  http: "HTTP", json: "JSON Transform", websearch: "Busca Web", calculator: "Calculadora", fs: "Filesystem", shell: "Shell (off)", custom: "Custom JS",
+  http: "HTTP", json: "JSON Transform", websearch: "Busca Web", calculator: "Calculadora", fs: "Filesystem", shell: "Shell", custom: "Custom JS",
 };
 
 export function ToolsPage() {
@@ -91,6 +91,7 @@ function ToolEditor({ open, tool, onSave, onClose }: { open: boolean; tool: Tool
   const [kind, setKind] = useState<ToolKind>(tool?.kind ?? "custom");
   const [code, setCode] = useState(tool?.code ?? "// receives `args`, return any JSON-serializable value\nreturn { ok: true, args };");
   const [paramsJson, setParamsJson] = useState(JSON.stringify(tool?.params ?? [{ key: "input", type: "string", required: true }], null, 2));
+  const [configJson, setConfigJson] = useState(JSON.stringify(tool?.config ?? {}, null, 2));
   const [enabled, setEnabled] = useState(tool?.enabled ?? true);
 
   useEffect(() => {
@@ -100,6 +101,7 @@ function ToolEditor({ open, tool, onSave, onClose }: { open: boolean; tool: Tool
     setKind(tool?.kind ?? "custom");
     setCode(tool?.code ?? "// receives `args`, return any JSON-serializable value\nreturn { ok: true, args };");
     setParamsJson(JSON.stringify(tool?.params ?? [{ key: "input", type: "string", required: true }], null, 2));
+    setConfigJson(JSON.stringify(tool?.config ?? {}, null, 2));
     setEnabled(tool?.enabled ?? true);
   }, [open, tool]);
 
@@ -107,10 +109,13 @@ function ToolEditor({ open, tool, onSave, onClose }: { open: boolean; tool: Tool
     if (!name.trim()) { toast.error("Nome obrigatório"); return; }
     let params: ToolParam[] = [];
     try { params = JSON.parse(paramsJson); } catch { toast.error("Params: JSON inválido"); return; }
+    let config: Record<string, unknown> = {};
+    try { config = JSON.parse(configJson || "{}"); } catch { toast.error("Config: JSON inválido"); return; }
     onSave({
       id: tool?.id ?? rid(),
       name: name.trim(), description: description.trim(),
       kind, params, code: kind === "custom" ? code : tool?.code,
+      config,
       enabled, builtIn: tool?.builtIn,
     });
   };
@@ -129,11 +134,17 @@ function ToolEditor({ open, tool, onSave, onClose }: { open: boolean; tool: Tool
             { value: "websearch", label: "Web Search" },
             { value: "calculator", label: "Calculator" },
             { value: "fs", label: "Filesystem" },
+            { value: "shell", label: "Shell" },
             { value: "custom", label: "Custom JS" },
           ]} />
         <div>
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Parâmetros (JSON)</div>
           <textarea value={paramsJson} onChange={(e) => setParamsJson(e.target.value)} rows={6}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-mono text-slate-800 outline-none focus:border-slate-400" />
+        </div>
+        <div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Config (JSON)</div>
+          <textarea value={configJson} onChange={(e) => setConfigJson(e.target.value)} rows={4}
             className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-mono text-slate-800 outline-none focus:border-slate-400" />
         </div>
         {kind === "custom" && (
@@ -174,7 +185,11 @@ function ToolRunner({ tool, onClose }: { tool: Tool | null; onClose: () => void 
         else if (p.type === "json") { try { args[p.key] = JSON.parse(raw || "null"); } catch { args[p.key] = raw; } }
         else args[p.key] = raw;
       }
-      const r = await api.runTool({ kind: tool.kind, args, code: tool.code });
+      const r = await api.runTool({
+        kind: tool.kind,
+        args: { ...(tool.config ?? {}), ...args },
+        code: tool.code,
+      });
       setResult(JSON.stringify(r, null, 2));
       if (r.ok) toast.success(`Tool executada (${r.latencyMs}ms)`);
       else toast.error(`Erro: ${r.error}`);

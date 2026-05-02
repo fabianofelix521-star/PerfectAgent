@@ -13,6 +13,12 @@ import {
   VULCAN_ARCHITECTURE_RULES,
   withRuntimeInstructions,
 } from "@/runtimes/shared/runtimeInstructions";
+import { buildWebResearchTool } from "@/runtimes/shared/runtimeAgentScaffold";
+import {
+  SYSTEM_ACCESS_RUNTIME_RULE,
+  withSystemAccessTool,
+} from "@/runtimes/shared/systemAccess";
+import type { AgentTool } from "@/types/agents";
 
 export interface CodeHotspot {
   file: string;
@@ -105,11 +111,13 @@ export interface VulcanMemoryState {
 interface VulcanReviewAgent {
   id: string;
   systemPrompt: string;
+  tools: AgentTool[];
   review(diff: CodeDiff): Promise<ReviewFinding[]>;
 }
 
 abstract class BaseVulcanAgent implements VulcanReviewAgent {
   readonly systemPrompt: string;
+  readonly tools: AgentTool[];
 
   constructor(public readonly id: string, extraPrompt?: string) {
     this.systemPrompt = withRuntimeInstructions(
@@ -117,6 +125,12 @@ abstract class BaseVulcanAgent implements VulcanReviewAgent {
       GLOBAL_CITATION_RULE,
       CONFIDENCE_CALIBRATION_RULE,
       extraPrompt,
+      SYSTEM_ACCESS_RUNTIME_RULE,
+    );
+    this.tools = withSystemAccessTool(
+      [buildWebResearchTool()],
+      "vulcan",
+      `Vulcan ${id}`,
     );
   }
   abstract review(diff: CodeDiff): Promise<ReviewFinding[]>;

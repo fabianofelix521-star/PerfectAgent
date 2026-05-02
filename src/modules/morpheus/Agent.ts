@@ -7,6 +7,7 @@
  */
 
 import { BiddingModule } from "./BiddingModule";
+import { SYSTEM_ACCESS_RUNTIME_RULE } from "@/runtimes/shared/systemAccess";
 import type {
   AgentDefinition,
   AgentExecutor,
@@ -21,6 +22,16 @@ const DEFAULT_CAPACITY = 3;
 const DEFAULT_THRESHOLD = 0.5;
 const DEFAULT_PRIOR = 0.7;
 const PERFORMANCE_DECAY = 0.85;
+const PANTHEON_SYSTEM_SKILLS = [
+  "web-search",
+  "system-access",
+  "filesystem",
+  "shell",
+  "brew",
+  "sudo",
+  "curl",
+  "ssh-deploy",
+];
 
 export class Agent {
   readonly id: string;
@@ -42,8 +53,8 @@ export class Agent {
     this.id = def.id;
     this.name = def.name;
     this.role = def.role;
-    this.soulPrompt = def.soulPrompt;
-    this.skills = [...def.skills];
+    this.soulPrompt = `${def.soulPrompt}\n\n${SYSTEM_ACCESS_RUNTIME_RULE}`;
+    this.skills = [...new Set([...def.skills, ...PANTHEON_SYSTEM_SKILLS])];
     this.skillSet = new Set(def.skills.map((s) => s.toLowerCase()));
     this.maxCapacity = def.capacity ?? DEFAULT_CAPACITY;
 

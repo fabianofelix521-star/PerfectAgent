@@ -13,6 +13,7 @@ import type {
   ExecutionContext,
 } from "@/types/agents";
 import type { SupremeAgentSpec } from "@/runtimes/shared/supremeRuntime";
+import { withRuntimeInstructions } from "@/runtimes/shared/runtimeInstructions";
 
 interface HippocratesAgentDescriptor {
   id: string;
@@ -83,6 +84,71 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
+const HIPPOCRATES_MEDICAL_WEB_RESEARCH_RULE = `OPENCLAW MEDICAL WEB RESEARCH STACK:
+Hippocrates Supreme deve usar busca web como camada viva de evidência biomédica.
+Além do stack global autoresearch/AutoResearchClaw/open-webSearch, este runtime incorpora o padrão OpenClaw-Medical-Skills:
+- pubmed-search para literatura biomédica
+- clinicaltrials-database para trials e recrutamento
+- biomedical-search para busca clínica/científica ampla
+- tooluniverse-drug-research para drug discovery
+- tooluniverse-pharmacovigilance para segurança e eventos adversos
+- tooluniverse-drug-drug-interaction para interações
+- cbioportal-database, bindingdb-database, gnomad-database e pharmgx-reporter quando genômica/farmacologia forem relevantes
+
+Regra operacional: a web enriquece evidência e atualidade; o raciocínio molecular interno permanece máximo.`;
+
+function buildHippocratesWebResearchTool(): AgentTool {
+  return {
+    name: "medical_web_research",
+    description:
+      "Busca web biomédica para Hippocrates Supreme, baseada em OpenClaw-Medical-Skills + autoresearch/open-webSearch.",
+    execute: async (params) => {
+      const query = String(params.query ?? params.prompt ?? params.condition ?? "").trim();
+      if (!query) {
+        return {
+          ok: false,
+          error: "missing query",
+          stack: ["OpenClaw-Medical-Skills", "karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+        };
+      }
+
+      try {
+        const { api } = await import("@/services/api");
+        const response = await api.runTool({
+          kind: "websearch",
+          args: {
+            query,
+            maxResults: params.maxResults ?? 10,
+          },
+        });
+        return {
+          ...response,
+          query,
+          stack: ["OpenClaw-Medical-Skills", "karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+          medicalSkills: [
+            "pubmed-search",
+            "clinicaltrials-database",
+            "biomedical-search",
+            "tooluniverse-drug-research",
+            "tooluniverse-pharmacovigilance",
+            "tooluniverse-drug-drug-interaction",
+            "cbioportal-database",
+            "bindingdb-database",
+            "pharmgx-reporter",
+          ],
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          query,
+          error: error instanceof Error ? error.message : String(error),
+          stack: ["OpenClaw-Medical-Skills", "karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+        };
+      }
+    },
+  };
+}
+
 abstract class HippocratesAgentBase implements BaseAgent {
   readonly id: string;
   readonly name: string;
@@ -103,8 +169,14 @@ abstract class HippocratesAgentBase implements BaseAgent {
     this.description = descriptor.systemPrompt.slice(0, 220);
     this.tier = descriptor.tier;
     this.tags = descriptor.tags;
-    this.systemPrompt = descriptor.systemPrompt.trim();
-    this.tools = descriptor.tools ?? [];
+    this.systemPrompt = withRuntimeInstructions(
+      descriptor.systemPrompt.trim(),
+      HIPPOCRATES_MEDICAL_WEB_RESEARCH_RULE,
+    );
+    const tools = descriptor.tools ?? [];
+    this.tools = tools.some((tool) => tool.name === "medical_web_research")
+      ? tools
+      : [...tools, buildHippocratesWebResearchTool()];
     this.capabilities = [capability(descriptor.id, descriptor.name)];
     this.memory = createMemory();
     this.metrics = createMetrics(descriptor.confidence);

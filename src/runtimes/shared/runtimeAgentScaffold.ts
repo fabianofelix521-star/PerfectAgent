@@ -26,6 +26,7 @@ import {
   GLOBAL_CITATION_RULE,
   withRuntimeInstructions,
 } from "@/runtimes/shared/runtimeInstructions";
+import { withSystemAccessTool } from "@/runtimes/shared/systemAccess";
 
 export interface RuntimeAgentConfig {
   id: string;
@@ -36,6 +37,7 @@ export interface RuntimeAgentConfig {
   tags: string[];
   systemPrompt: string;
   tools?: AgentTool[];
+  systemAccess?: boolean;
   capabilities?: AgentCapability[];
 }
 
@@ -106,6 +108,57 @@ export function buildTool(
   };
 }
 
+export function buildWebResearchTool(): AgentTool {
+  return buildTool(
+    "web_research",
+    "Busca web real para agentes usando o endpoint interno websearch, seguindo o fluxo autoresearch/open-webSearch: consulta especifica, resultados estruturados e síntese com fontes.",
+    async (params) => {
+      const query = String(params.query ?? params.prompt ?? params.topic ?? "").trim();
+      if (!query) {
+        return {
+          ok: false,
+          error: "missing query",
+          stack: ["karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+        };
+      }
+
+      try {
+        const { api } = await import("@/services/api");
+        const response = await api.runTool({
+          kind: "websearch",
+          args: {
+            query,
+            maxResults: params.maxResults ?? 8,
+          },
+        });
+        return {
+          ...response,
+          query,
+          stack: ["karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+          workflow: [
+            "generate-specific-query",
+            "search-live-web",
+            "rank-primary-sources",
+            "synthesize-with-citations",
+          ],
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          query,
+          error: error instanceof Error ? error.message : String(error),
+          stack: ["karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+        };
+      }
+    },
+  );
+}
+
+export function withGlobalWebResearchTool(tools: AgentTool[] = []): AgentTool[] {
+  if (tools.some((tool) => tool.name === "web_research")) return tools;
+  return [...tools, buildWebResearchTool()];
+}
+
 export function inferKeywords(prompt: string, limit = 10): string[] {
   return uniqueMerge([], tokenize(prompt), limit);
 }
@@ -143,7 +196,10 @@ export abstract class RuntimeExpertAgent implements BaseAgent {
       GLOBAL_CITATION_RULE,
       CONFIDENCE_CALIBRATION_RULE,
     );
-    this.tools = config.tools ?? [];
+    const tools = withGlobalWebResearchTool(config.tools ?? []);
+    this.tools = config.systemAccess
+      ? withSystemAccessTool(tools, config.supervisorId, config.name)
+      : tools;
     this.capabilities =
       config.capabilities ??
       [

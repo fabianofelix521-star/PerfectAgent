@@ -12,6 +12,7 @@ import {
   GLOBAL_CITATION_RULE,
   withRuntimeInstructions,
 } from "@/runtimes/shared/runtimeInstructions";
+import { SYSTEM_ACCESS_RUNTIME_RULE } from "@/runtimes/shared/systemAccess";
 import type { AgentInput, AgentOutput, AgentTier, ExecutionContext } from "@/types/agents";
 
 export interface SupremeAgentSpec {
@@ -34,6 +35,7 @@ export interface SupremeRuntimeConfig {
   domain: string;
   mission: string;
   safetyNotice?: string;
+  systemAccess?: boolean;
   agents: SupremeAgentSpec[];
 }
 
@@ -75,6 +77,7 @@ class ConfiguredSupremeAgent extends RuntimeExpertAgent {
   constructor(
     private readonly runtimeId: string,
     private readonly spec: SupremeAgentSpec,
+    systemAccess = false,
   ) {
     super({
       id: `${runtimeId}:${spec.id}`,
@@ -84,6 +87,7 @@ class ConfiguredSupremeAgent extends RuntimeExpertAgent {
       tier: spec.tier,
       tags: spec.tags,
       systemPrompt: spec.systemPrompt,
+      systemAccess,
       tools: [
         buildTool(spec.toolName, spec.toolDescription, async (params) =>
           buildSupremeToolResult(spec, String(params.prompt ?? ""), params),
@@ -127,10 +131,11 @@ class ConfiguredSupremeAgent extends RuntimeExpertAgent {
         recommendations: actions,
         riskControls: this.spec.riskControls,
         toolResult,
+        availableTools: this.tools.map((tool) => tool.name),
       },
       reasoning: `${this.spec.name} avaliou ${this.spec.outputFocus.length} frentes de ${this.runtimeId}.`,
       confidence: 0.86,
-      toolsUsed: [this.spec.toolName],
+      toolsUsed: this.tools.map((tool) => tool.name),
       followUpSuggestions: this.spec.riskControls.slice(0, 3),
     };
   }
@@ -144,10 +149,11 @@ export class SupremeRuntime {
     this.systemPrompt = withRuntimeInstructions(
       `${config.name}. Domain: ${config.domain}. Mission: ${config.mission}`,
       config.safetyNotice,
+      config.systemAccess ? SYSTEM_ACCESS_RUNTIME_RULE : undefined,
       GLOBAL_CITATION_RULE,
       CONFIDENCE_CALIBRATION_RULE,
     );
-    this.agents = config.agents.map((agent) => new ConfiguredSupremeAgent(config.id, agent));
+    this.agents = config.agents.map((agent) => new ConfiguredSupremeAgent(config.id, agent, Boolean(config.systemAccess)));
   }
 
   get id(): string {
@@ -291,5 +297,16 @@ function buildSupremeToolResult(
       owner: spec.id,
     })),
     paramsSeen: Object.keys(params).sort(),
+    webResearchStack: {
+      enabled: true,
+      tool: "web_research",
+      sources: ["karpathy/autoresearch", "AutoResearchClaw", "open-webSearch"],
+      workflow: [
+        "hypothesis-to-query",
+        "multi-engine-search",
+        "primary-source-ranking",
+        "evidence-synthesis",
+      ],
+    },
   };
 }

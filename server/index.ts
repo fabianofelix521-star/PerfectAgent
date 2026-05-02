@@ -385,8 +385,12 @@ app.post("/api/media/generate", async (req, res) => {
 
 async function generateMedia(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
   const providerKey = `${body.providerId} ${body.presetId ?? ""} ${body.spec.baseUrl}`.toLowerCase();
+  const baseHost = safeHost(body.spec.baseUrl);
+  const isOfficialOpenAi =
+    providerKey.split(/\s+/).some((part) => part === "openai") ||
+    baseHost === "api.openai.com";
 
-  if (providerKey.includes("openai") || body.spec.baseUrl.includes("api.openai.com")) {
+  if (isOfficialOpenAi) {
     if (body.kind === "image") return generateOpenAiImage(body);
     if (body.kind === "audio") return generateOpenAiAudio(body);
     throw new Error("OpenAI direto nesta rota nao suporta video. Use um provider de video como Replicate ou um custom endpoint.");
@@ -406,14 +410,17 @@ async function generateMedia(body: MediaGenerateRequest): Promise<MediaGenerateR
     return generateReplicateMedia(body);
   }
 
-  if (body.spec.shape === "openai") {
-    if (body.kind === "image") return generateOpenAiImage(body);
-    if (body.kind === "audio") return generateOpenAiAudio(body);
-  }
-
   throw new Error(
-    "Provider ainda nao suporta geracao direta nesta rota. Use Preparar geracao para o fluxo agentico ou configure OpenAI, ElevenLabs, Stability ou Replicate.",
+    `Provider ${body.providerId} nao suporta geracao direta de ${body.kind} nesta rota. Use Preparar geracao para o fluxo agentico ou configure OpenAI, ElevenLabs, Stability ou Replicate.`,
   );
+}
+
+function safeHost(value: string): string {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 async function generateOpenAiImage(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
@@ -1253,8 +1260,18 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
       return new Function(`return (${expr});`)();
     }
     case "websearch": {
-      const q = String(a.query ?? "");
+      const queryPrefix = String(a.queryPrefix ?? "").trim();
+      const site = String(a.site ?? "").trim();
+      const baseQuery = String(a.query ?? "");
+      const q = [queryPrefix, baseQuery, site ? `site:${site}` : ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
       if (!q) throw new Error("missing query");
+      const maxResults = Math.max(
+        1,
+        Math.min(20, Number(a.maxResults ?? 8) || 8),
+      );
       const r = await fetch(
         `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
         {
@@ -1267,16 +1284,23 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
       const re =
         /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
       let m: RegExpExecArray | null;
-      while ((m = re.exec(html)) && results.length < 8) {
+      while ((m = re.exec(html)) && results.length < maxResults) {
         results.push({
-          url: m[1]
-            .replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "")
-            .replace(/&.*$/, ""),
+          url: decodeDuckDuckGoUrl(m[1]),
           title: stripTags(m[2]),
           snippet: stripTags(m[3]),
         });
       }
-      return { query: q, results };
+      return {
+        query: q,
+        requestedQuery: baseQuery,
+        stack: [
+          "karpathy/autoresearch",
+          "AutoResearchClaw",
+          "open-webSearch",
+        ],
+        results,
+      };
     }
     case "fs": {
       const fs = await import("node:fs/promises");
@@ -1292,7 +1316,7 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
       return { ok: true, path: p, content };
     }
     case "shell": {
-      throw new Error("shell tool disabled in Phase 2");
+      return runShellTool(a);
     }
     case "custom": {
       if (!body.code) throw new Error("missing code");
@@ -1301,6 +1325,108 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
     }
   }
   throw new Error(`unknown kind: ${body.kind}`);
+}
+
+async function runShellTool(a: Record<string, unknown>): Promise<unknown> {
+  const started = Date.now();
+  const commandLine = String(a.commandLine ?? "").trim();
+  const command = String(a.command ?? "").trim();
+  const args = Array.isArray(a.args)
+    ? a.args.map((arg) => String(arg))
+    : undefined;
+  const tokens = commandLine ? tokenizeShellCommandLine(commandLine) : [];
+  const executable = command || tokens[0];
+  if (!executable) throw new Error("missing commandLine");
+
+  const timeoutMs = Math.max(
+    1_000,
+    Math.min(600_000, Number(a.timeoutMs ?? 120_000) || 120_000),
+  );
+  const cwdInput = typeof a.cwd === "string" && a.cwd.trim() ? a.cwd : ".";
+  const cwd = path.resolve(process.cwd(), cwdInput);
+  const env =
+    a.env && typeof a.env === "object" && !Array.isArray(a.env)
+      ? Object.fromEntries(
+          Object.entries(a.env as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : undefined;
+
+  return new Promise((resolve) => {
+    const child = spawn(executable, args ?? tokens.slice(1), {
+      cwd,
+      env: { ...process.env, ...(env ?? {}) },
+      shell: false,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      stderr += `\nTimeout after ${timeoutMs}ms`;
+      child.kill("SIGTERM");
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+      if (stdout.length > 200_000) stdout = stdout.slice(-200_000);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (stderr.length > 200_000) stderr = stderr.slice(-200_000);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({
+        success: false,
+        exitCode: 1,
+        command: executable,
+        args: args ?? tokens.slice(1),
+        cwd,
+        stdout,
+        stderr: stderr || error.message,
+        durationMs: Date.now() - started,
+      });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({
+        success: code === 0,
+        exitCode: code ?? 1,
+        command: executable,
+        args: args ?? tokens.slice(1),
+        cwd,
+        stdout,
+        stderr,
+        durationMs: Date.now() - started,
+      });
+    });
+  });
+}
+
+function tokenizeShellCommandLine(commandLine: string): string[] {
+  const tokens: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(commandLine))) {
+    tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
+  }
+  return tokens.filter(Boolean);
+}
+
+function decodeDuckDuckGoUrl(rawUrl: string): string {
+  const cleaned = stripTags(rawUrl);
+  try {
+    const absolute = cleaned.startsWith("//")
+      ? `https:${cleaned}`
+      : cleaned;
+    const parsed = new URL(absolute);
+    const uddg = parsed.searchParams.get("uddg");
+    return uddg ? decodeURIComponent(uddg) : cleaned;
+  } catch {
+    return cleaned
+      .replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "")
+      .replace(/&.*$/, "");
+  }
 }
 
 function stripTags(s: string): string {

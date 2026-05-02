@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Plus, Pencil, Trash2, Sparkles } from "lucide-react";
+import { BrainCircuit, Plus, Pencil, Trash2, Sparkles, Store, ExternalLink, CheckCircle2 } from "lucide-react";
 import { useConfig } from "@/stores/config";
 import { skillRegistry } from "@/core/skills/SkillRegistry";
+import { SKILL_MARKETPLACES, type SkillMarketplace } from "@/services/skillMarketplaces";
 import { WorkspaceShell, Surface, HeaderAction, Modal, Tag, ToggleRow, EditableField, Spinner } from "@/components/ui";
 import type { Skill } from "@/types";
 import type { Skill as RegistrySkill } from "@/core/skills/types";
@@ -50,6 +51,12 @@ export function SkillsPage() {
     upsertSkill({ ...skill, enabled: true });
   }
 
+  function handleInstallMarketplace(marketplace: SkillMarketplace) {
+    const skill = marketplaceToSkill(marketplace);
+    upsertSkill(skill);
+    toast.success(`${marketplace.name} disponível no catálogo`);
+  }
+
   return (
     <WorkspaceShell
       eyebrow="Skills"
@@ -57,6 +64,76 @@ export function SkillsPage() {
       description="Skills são prompts de sistema que você ativa em qualquer chat. Combine várias para compor o agente perfeito."
       action={<HeaderAction icon={Plus} label="Nova skill" onClick={() => setCreating(true)} />}
     >
+      <Surface className="mb-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              Skill Stores
+            </p>
+            <h2 className="text-lg font-semibold text-slate-950">
+              Lojas e bancos conectados
+            </h2>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600">
+            <Store className="h-3.5 w-3.5" />
+            ClawHub + SkillsMP
+          </span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {SKILL_MARKETPLACES.map((marketplace) => {
+            const installed = storeSkills.some(
+              (skill) => skill.id === marketplaceSkillId(marketplace.id),
+            );
+            return (
+              <div
+                key={marketplace.id}
+                className="rounded-3xl border border-white/70 bg-white/60 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-950">
+                      {marketplace.name}
+                    </h3>
+                    <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+                      {marketplace.description}
+                    </p>
+                  </div>
+                  {installed ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                  ) : null}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {marketplace.tags.map((tag) => (
+                    <Tag key={tag}>{tag}</Tag>
+                  ))}
+                </div>
+                <p className="mt-3 rounded-2xl bg-slate-950/5 p-3 text-[11px] font-mono leading-5 text-slate-600">
+                  {marketplace.localPath ?? marketplace.url}
+                </p>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  {marketplace.url ? (
+                    <button
+                      type="button"
+                      onClick={() => window.open(marketplace.url, "_blank", "noopener,noreferrer")}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleInstallMarketplace(marketplace)}
+                    className="inline-flex items-center gap-1 rounded-full bg-[#17172d] px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    {installed ? "Reinstalar" : "Instalar"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Surface>
       <Surface>
         <div className="grid gap-3 lg:grid-cols-2">
           {skills.length === 0 ? (
@@ -88,6 +165,25 @@ export function SkillsPage() {
       />
     </WorkspaceShell>
   );
+}
+
+function marketplaceSkillId(id: string): string {
+  if (id === "clawhub-local") return "sk-felixsuperclaw-local";
+  if (id === "skillsmp") return "sk-skillsmp-marketplace";
+  if (id === "ui-ux-pro-max") return "sk-ui-ux-pro-max";
+  return `sk-${id}`;
+}
+
+function marketplaceToSkill(marketplace: SkillMarketplace): Skill {
+  return {
+    id: marketplaceSkillId(marketplace.id),
+    name: marketplace.name,
+    description: marketplace.description,
+    systemPrompt: `${marketplace.description}\n\n${marketplace.installHint}\n${marketplace.url ? `Fonte: ${marketplace.url}` : ""}\n${marketplace.localPath ? `Caminho local: ${marketplace.localPath}` : ""}`,
+    tags: marketplace.tags,
+    enabled: true,
+    builtIn: true,
+  };
 }
 
 function SkillCard({ skill, onToggle, onEdit, onDelete }: { skill: Skill; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {

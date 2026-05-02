@@ -19,6 +19,40 @@ Confidence mede QUALIDADE DA ANÁLISE, não certeza do resultado.
 Avalie completude, qualidade de evidência, acionabilidade, coerência e profundidade.
 Confidence abaixo de 0.5 só é aceitável quando dados são insuficientes, domínio é genuinamente impossível de analisar, ou a pergunta é mal definida.`;
 
+export const GLOBAL_WEB_RESEARCH_RULE = `BUSCA WEB E AUTO-RESEARCH OBRIGATÓRIOS:
+Todo runtime deve tratar a web como fonte viva de evidência quando a pergunta depende de fatos atuais, papers, documentação, preços, mercado, segurança, medicina, legislação, ferramentas ou qualquer dado que possa ter mudado.
+
+Stack conceitual integrada:
+- karpathy/autoresearch: ciclo de hipótese -> experimento/busca -> avaliação -> retenção/descarte -> próxima iteração.
+- AutoResearchClaw: decomposição de uma ideia em pesquisa autônoma, coleta, síntese e artefato final verificável.
+- open-webSearch: busca multi-engine, retorno estruturado com título/URL/descrição e fetch de conteúdo quando disponível, sem depender de API key.
+
+Procedimento mínimo:
+1. Gerar consultas específicas, não genéricas.
+2. Buscar fontes primárias quando possível.
+3. Separar evidência observada de inferência.
+4. Citar URLs/títulos relevantes no output quando usar web.
+5. Declarar lacunas quando a busca falhar ou quando a fonte não sustentar a conclusão.`;
+
+export const NEXUS_SYSTEM_AWARENESS_RULE = `CONTEXTO OPERACIONAL DO NEXUS ULTRA AGI:
+Você está rodando dentro do Nexus Ultra AGI, não em um chat genérico. O app tem stores persistidas para skills, tools, providers, models, runtimes e projetos.
+
+Quando o usuário pedir para instalar skill/tool/runtime:
+1. Executar a instalação real via tools de sistema/filesystem/shell quando disponíveis.
+2. Persistir a capacidade no catálogo do app quando houver store/rota para isso.
+3. Verificar se aparece em Skills/Tools ou no contexto de runtime.
+4. Reportar arquivos/caminhos alterados e validação feita.
+5. Não responder apenas com pseudo-código, JavaScript ou tags <tool_call>; isso não instala nada.
+
+Lojas/bancos conhecidos:
+- ClawHub local: procurar em $HOME/felixsuperclaw, /Users/felix/felixsuperclaw, /DATA/AppData/openclaw, /DATA/AppData/OpenClaw e /DATA/AppData/crowagent, com .agents/skills e extensions/openclaw.plugin.json.
+- SkillsMP: https://skillsmp.com.
+- UI/UX Pro Max instalado: .codex/skills/ui-ux-pro-max.
+
+Para UI/UX Pro Max, use a busca local:
+python3 .codex/skills/ui-ux-pro-max/scripts/search.py "<query>" --design-system
+ou buscas por dominio/stack conforme a skill.`;
+
 export const PROMETHEUS_ON_CHAIN_FORENSICS_RULE = `ANÁLISE ON-CHAIN FORENSE OBRIGATÓRIA para tokens novos:
 1. CLUSTER ANALYSIS: rastrear funding source das top wallets; 3+ wallets financiadas pela mesma origem é RED FLAG; buscar timing coordenado.
 2. VERIFICAÇÃO DE LOCK: não confiar apenas em locked; verificar hash, contrato verificado, backdoors e distinguir lock real de lock cosmético.
@@ -96,8 +130,15 @@ export function withRuntimeInstructions(
   basePrompt: string,
   ...instructions: Array<string | undefined>
 ): string {
-  return [basePrompt, ...instructions]
+  const parts = [basePrompt, NEXUS_SYSTEM_AWARENESS_RULE, GLOBAL_WEB_RESEARCH_RULE, ...instructions];
+  const seen = new Set<string>();
+  return parts
     .map((part) => part?.trim())
     .filter(Boolean)
+    .filter((part) => {
+      if (!part || seen.has(part)) return false;
+      seen.add(part);
+      return true;
+    })
     .join("\n\n---\n\n");
 }

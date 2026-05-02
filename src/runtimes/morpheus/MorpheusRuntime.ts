@@ -17,6 +17,11 @@ import {
   MORPHEUS_PRODUCTION_FEASIBILITY_RULE,
   withRuntimeInstructions,
 } from "@/runtimes/shared/runtimeInstructions";
+import { buildWebResearchTool } from "@/runtimes/shared/runtimeAgentScaffold";
+import {
+  SYSTEM_ACCESS_RUNTIME_RULE,
+  withSystemAccessTool,
+} from "@/runtimes/shared/systemAccess";
 import type { AgentInput, AgentOutput, AgentTier, AgentTool, ExecutionContext } from "@/types/agents";
 
 export type CreativeWorkType =
@@ -132,6 +137,7 @@ export interface MorpheusAgent {
   creativeSpecialty: string;
   aestheticSensitivity: number;
   systemPrompt: string;
+  tools: AgentTool[];
   create(brief: CreativeBrief, aestheticField: AestheticField): Promise<CreativeWork>;
   critique(work: CreativeWork, aestheticField: AestheticField): Promise<CritiqueResult>;
   proposeAestheticEvolution(works: CreativeWork[]): Promise<AestheticFieldDelta>;
@@ -139,6 +145,7 @@ export interface MorpheusAgent {
 
 abstract class BaseMorpheusAgent implements MorpheusAgent {
   readonly systemPrompt: string;
+  readonly tools: AgentTool[];
 
   constructor(
     public readonly id: string,
@@ -152,6 +159,12 @@ abstract class BaseMorpheusAgent implements MorpheusAgent {
       GLOBAL_CITATION_RULE,
       CONFIDENCE_CALIBRATION_RULE,
       MORPHEUS_PRODUCTION_FEASIBILITY_RULE,
+      SYSTEM_ACCESS_RUNTIME_RULE,
+    );
+    this.tools = withSystemAccessTool(
+      [buildWebResearchTool()],
+      "morpheus-pantheon",
+      `Morpheus ${creativeSpecialty}`,
     );
   }
 
@@ -363,8 +376,9 @@ Para cada game design document gerado pelo Morpheus, sempre adicionar uma seçã
     GLOBAL_CITATION_RULE,
     CONFIDENCE_CALIBRATION_RULE,
     MORPHEUS_PRODUCTION_FEASIBILITY_RULE,
+    SYSTEM_ACCESS_RUNTIME_RULE,
   );
-  readonly tools: AgentTool[] = [
+  readonly tools: AgentTool[] = withSystemAccessTool([
     {
       name: "estimate_production",
       description: "Estima timeline, equipe e budget para um GDD",
@@ -378,7 +392,8 @@ Para cada game design document gerado pelo Morpheus, sempre adicionar uma seçã
         source: params.gdd ? "gdd" : "prompt",
       }),
     },
-  ];
+    buildWebResearchTool(),
+  ], "morpheus-pantheon", "Morpheus Production Estimator");
 
   async estimateProduction(
     works: CreativeWork[],
@@ -465,7 +480,7 @@ Para cada game design document gerado pelo Morpheus, sempre adicionar uma seçã
       result: estimate,
       confidence: 0.88,
       latencyMs: now() - start,
-      toolsUsed: ["estimate_production"],
+      toolsUsed: this.tools.map((tool) => tool.name),
     };
     output.confidence = await this.selfEvaluate(output);
     return output;

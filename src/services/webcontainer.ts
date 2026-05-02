@@ -38,6 +38,9 @@ export interface WebContainerSupportStatus {
   crossOriginIsolated: boolean;
   protocol?: string;
   host?: string;
+  suggestedLocalUrl?: string;
+  sshTunnelCommand?: string;
+  requiresSecureOrigin?: boolean;
   inIframe: boolean;
   reason?: string;
 }
@@ -77,20 +80,32 @@ class WebContainerServiceImpl {
     const crossOriginIsolated = window.crossOriginIsolated === true;
     const protocol = window.location.protocol;
     const host = window.location.host;
+    const hostname = window.location.hostname;
+    const port = window.location.port || (protocol === "https:" ? "443" : "80");
     const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1" ||
-      window.location.hostname === "::1";
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1";
     const inIframe = window.self !== window.top;
     const supported = hasSharedArrayBuffer && crossOriginIsolated;
+    const requiresSecureOrigin = protocol !== "https:" && !isLocalhost;
+    const suggestedLocalUrl =
+      requiresSecureOrigin && port
+        ? `http://localhost:${port}${window.location.pathname}${window.location.search}${window.location.hash}`
+        : undefined;
+    const sshTunnelCommand =
+      requiresSecureOrigin && port && hostname
+        ? `ssh -L ${port}:127.0.0.1:${port} usuario@${hostname}`
+        : undefined;
 
     let reason: string | undefined;
     if (!supported) {
       if (inIframe) {
         reason =
           "WebContainer cannot start inside this embedded frame because the top-level page is not cross-origin isolated.";
-      } else if (protocol !== "https:" && !isLocalhost) {
-        reason = "WebContainer requires HTTPS or localhost.";
+      } else if (requiresSecureOrigin) {
+        reason =
+          "WebContainer requires HTTPS or localhost. Em host SSH/LAN, acesse via tunnel local ou sirva HTTPS com COOP/COEP.";
       } else if (!crossOriginIsolated) {
         reason =
           "The page is not cross-origin isolated. Reload from the Vite URL that serves COOP/COEP headers.";
@@ -106,6 +121,9 @@ class WebContainerServiceImpl {
       crossOriginIsolated,
       protocol,
       host,
+      suggestedLocalUrl,
+      sshTunnelCommand,
+      requiresSecureOrigin,
       inIframe,
       reason,
     };
@@ -121,6 +139,12 @@ class WebContainerServiceImpl {
     return [
       "WebContainer indisponivel: o preview real precisa de cross-origin isolation no navegador.",
       status.reason,
+      status.sshTunnelCommand
+        ? `Host SSH/LAN detectado: rode '${status.sshTunnelCommand}' na sua maquina e abra ${status.suggestedLocalUrl}.`
+        : undefined,
+      status.requiresSecureOrigin && !status.sshTunnelCommand
+        ? "Alternativa: configure HTTPS no host com COOP/COEP preservados."
+        : undefined,
       details.length ? `Diagnostico: ${details.join(", ")}.` : undefined,
     ]
       .filter(Boolean)
