@@ -30,4 +30,13 @@ if (!("matchMedia" in window)) {
 }
 
 // Avoid hitting the real backend during tests
-vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } })));
+vi.stubGlobal(
+  "fetch",
+  vi.fn(
+    async () =>
+      new Response(JSON.stringify({ ok: true, authRequired: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  ),
+);

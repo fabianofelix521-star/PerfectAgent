@@ -27,7 +27,10 @@ const ALL_KINDS: RuntimeKind[] = [
   "langgraph-dag", "langgraph", "crewai", "autogen", "llamaindex",
   "webcontainer", "omega-cognition", "morpheus-pantheon",
   "prometheus", "morpheus-creative", "apollo", "hermes", "athena",
-  "vulcan", "oracle", "nexus-prime", "stigmergy-nexus",
+  "vulcan", "oracle", "nexus-prime", "hippocrates-supreme", "mendeleev",
+  "prompt-forge", "silicon-valley", "unreal-forge", "aegis",
+  "content-empire", "ad-commander", "studio-one", "wall-street",
+  "pixel-forge", "stigmergy-nexus",
   "ephemeral-genesis", "supreme-coordinator", "custom", "generic",
 ];
 

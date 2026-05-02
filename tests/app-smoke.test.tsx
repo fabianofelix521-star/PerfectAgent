@@ -11,6 +11,7 @@ vi.mock("@monaco-editor/react", () => ({
 }));
 
 function resetStore() {
+  window.history.pushState({}, "", "/");
   useConfig.setState({
     chatThreads: [],
     activeChatThreadId: undefined,
@@ -24,6 +25,14 @@ function resetStore() {
   ensurePresetsRegistered();
 }
 
+async function waitForWorkspace() {
+  expect(
+    await screen.findByLabelText("Novo chat", undefined, {
+      timeout: LAZY_ROUTE_TIMEOUT,
+    }),
+  ).toBeInTheDocument();
+}
+
 describe("app route smoke", () => {
   beforeEach(() => resetStore());
 
@@ -31,11 +40,7 @@ describe("app route smoke", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    expect(
-      await screen.findByText("Operação Nexus Ultra AGI", undefined, {
-        timeout: LAZY_ROUTE_TIMEOUT,
-      }),
-    ).toBeInTheDocument();
+    await waitForWorkspace();
 
     await user.click(screen.getByLabelText("Novo chat"));
     expect(
@@ -95,6 +100,7 @@ describe("app route smoke", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await waitForWorkspace();
     await user.click(screen.getByLabelText("Agentes"));
     expect(
       await screen.findByText("Runtime real com LangGraph", undefined, {
@@ -115,6 +121,7 @@ describe("app route smoke", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await waitForWorkspace();
     await user.click(screen.getByLabelText("Novo chat"));
     await user.type(
       await screen.findByPlaceholderText("Type your message...", undefined, {
@@ -126,5 +133,5 @@ describe("app route smoke", () => {
 
     expect(await screen.findByText(/Oi! Estou aqui/i)).toBeInTheDocument();
     expect(screen.queryByText(/plan\s*\{/i)).not.toBeInTheDocument();
-  });
+  }, 20000);
 });

@@ -1,6 +1,10 @@
 import type { AgentRuntime, ModelConfig, ProviderConfig } from "@/types";
 import { presetById } from "@/services/providers";
 
+type ResolutionOptions = {
+  fallbackToFirst?: boolean;
+};
+
 export function providerIsUsable(provider: ProviderConfig | undefined): provider is ProviderConfig {
   if (!provider) return false;
   return provider.enabled && (provider.configured || provider.spec.authMode === "none" || Boolean(provider.spec.apiKey || provider.apiKey));
@@ -32,9 +36,11 @@ export function resolveProviderId(
   selectedProviderId: string | undefined,
   defaultProviderId: string | undefined,
   providers: Record<string, ProviderConfig>,
+  options: ResolutionOptions = {},
 ): string | undefined {
   if (providerIsUsable(selectedProviderId ? providers[selectedProviderId] : undefined)) return selectedProviderId;
   if (providerIsUsable(defaultProviderId ? providers[defaultProviderId] : undefined)) return defaultProviderId;
+  if (options.fallbackToFirst === false) return undefined;
   return getProviderOptions(providers)[0]?.id;
 }
 
@@ -44,11 +50,13 @@ export function resolveModelId(
   providerId: string | undefined,
   providers: Record<string, ProviderConfig>,
   models: ModelConfig[],
+  options: ResolutionOptions = {},
 ): string | undefined {
-  const options = getModelOptions(providerId, providers, models);
-  if (selectedModelId && options.some((model) => model.id === selectedModelId)) return selectedModelId;
-  if (defaultModelId && options.some((model) => model.id === defaultModelId)) return defaultModelId;
-  return options[0]?.id;
+  const modelOptions = getModelOptions(providerId, providers, models);
+  if (selectedModelId && modelOptions.some((model) => model.id === selectedModelId)) return selectedModelId;
+  if (defaultModelId && modelOptions.some((model) => model.id === defaultModelId)) return defaultModelId;
+  if (options.fallbackToFirst === false) return undefined;
+  return modelOptions[0]?.id;
 }
 
 export function resolveRuntimeLlmConfig(
@@ -56,27 +64,25 @@ export function resolveRuntimeLlmConfig(
   params: {
     providers: Record<string, ProviderConfig>;
     models: ModelConfig[];
-    defaultProviderId?: string;
-    defaultModelId?: string;
     selectionProviderId?: string;
     selectionModel?: string;
   },
 ): { providerId?: string; modelId?: string } {
   const providerId = resolveProviderId(
     runtime.llmProviderId ?? params.selectionProviderId,
-    params.defaultProviderId,
+    undefined,
     params.providers,
+    { fallbackToFirst: false },
   );
   const selectionModel =
     params.selectionProviderId === providerId ? params.selectionModel : undefined;
-  const defaultModelId =
-    params.defaultProviderId === providerId ? params.defaultModelId : undefined;
   const modelId = resolveModelId(
     runtime.llmModel ?? selectionModel,
-    defaultModelId,
+    undefined,
     providerId,
     params.providers,
     params.models,
+    { fallbackToFirst: false },
   );
   return { providerId, modelId };
 }
@@ -85,8 +91,10 @@ export function resolveRuntimeId(
   selectedRuntimeId: string | undefined,
   defaultRuntimeId: string | undefined,
   runtimes: AgentRuntime[],
+  options: ResolutionOptions = {},
 ): string | undefined {
   if (selectedRuntimeId && runtimes.some((runtime) => runtime.id === selectedRuntimeId)) return selectedRuntimeId;
   if (defaultRuntimeId && runtimes.some((runtime) => runtime.id === defaultRuntimeId)) return defaultRuntimeId;
+  if (options.fallbackToFirst === false) return undefined;
   return runtimes.find((runtime) => runtime.isDefault)?.id ?? runtimes[0]?.id;
 }

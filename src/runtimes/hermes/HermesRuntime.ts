@@ -9,6 +9,12 @@ import {
   tokenize,
   uniqueMerge,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  HERMES_PRICING_STRATEGY_RULE,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface AudienceModel {
   segment: string;
@@ -108,6 +114,7 @@ export interface HermesMemoryState {
 export interface HermesAgent {
   id: string;
   marketingSpecialty: string;
+  systemPrompt: string;
   create(brief: MarketingBrief, audienceModel: AudienceModel): Promise<MarketingContent>;
   analyzePerformance(results: CampaignResult[]): Promise<AudienceModelDelta>;
   predictPerformance(
@@ -117,11 +124,21 @@ export interface HermesAgent {
 }
 
 abstract class BaseHermesAgent implements HermesAgent {
+  readonly systemPrompt: string;
+
   constructor(
     public readonly id: string,
     public readonly marketingSpecialty: string,
     private readonly angleVocabulary: string[],
-  ) {}
+    extraPrompt?: string,
+  ) {
+    this.systemPrompt = withRuntimeInstructions(
+      `Hermes ${marketingSpecialty} agent. Produce Brazilian Portuguese growth analysis with audience evidence, actionable recommendations and explicit assumptions.`,
+      GLOBAL_CITATION_RULE,
+      CONFIDENCE_CALIBRATION_RULE,
+      extraPrompt,
+    );
+  }
 
   async create(brief: MarketingBrief, audienceModel: AudienceModel): Promise<MarketingContent> {
     const desire = audienceModel.psychographics.coreDesires[0] ?? "resultado mensuravel";
@@ -250,6 +267,42 @@ export class SocialIntelligenceAgent extends BaseHermesAgent {
   }
 }
 
+export class PricingStrategyAgent extends BaseHermesAgent {
+  constructor() {
+    super(
+      "pricing-strategist",
+      "pricing-monetization",
+      ["willingness-to-pay", "tier-structure", "ltv", "arpu", "nrr"],
+      HERMES_PRICING_STRATEGY_RULE,
+    );
+  }
+
+  async create(brief: MarketingBrief, audienceModel: AudienceModel): Promise<MarketingContent> {
+    const base = await super.create(brief, audienceModel);
+    const currentPrice = extractMonthlyPrice(`${brief.offer} ${brief.sourceInsights?.join(" ") ?? ""}`);
+    const churnMentioned = /churn|cancel|reten/i.test(`${brief.offer} ${brief.sourceInsights?.join(" ") ?? ""}`);
+    const lowTicketRisk = currentPrice !== undefined && currentPrice <= 97 && churnMentioned;
+    const suggestedPro = currentPrice ? Math.max(197, Math.round(currentPrice * 2.5)) : 297;
+    return {
+      ...base,
+      channel: "pricing-strategy",
+      headline: `Pricing SaaS: estruturar tiers para ${brief.product.slice(0, 42)}`,
+      body: [
+        `Willingness-to-pay: validar se o valor percebido entrega 3-10x o preço cobrado para ${audienceModel.segment}.`,
+        `Tier structure sugerida: Free limitado para aquisição, Pro em R$ ${suggestedPro}/mês como monetização principal e Enterprise com onboarding, segurança e suporte premium.`,
+        lowTicketRisk
+          ? "Sinal crítico: churn alto com ticket baixo pode indicar clientes pouco comprometidos; testar aumento de preço pode reduzir churn e elevar receita."
+          : "Analisar ARPU, LTV:CAC, payback e NRR antes de travar o preço definitivo.",
+        "PLG: liberar self-serve upgrade, expansão por uso e limites claros entre tiers.",
+      ].join(" "),
+      callToAction: "Testar nova matriz de pricing",
+      angle: "pricing-monetization:tier-structure:value-capture",
+      objectionsHandled: uniqueMerge(base.objectionsHandled, ["preco", "valor percebido", "churn", "payback"], 8),
+      predictedAudienceFit: Math.max(base.predictedAudienceFit, 0.82),
+    };
+  }
+}
+
 export class ResonanceEngine {
   predictResonance(
     content: MarketingContent,
@@ -329,7 +382,7 @@ export class HermesRuntime {
   async createCampaign(brief: MarketingBrief): Promise<Campaign> {
     const audienceModel = await this.getAudienceModel(brief.targetSegment);
     const enrichedModel = await this.enrichAudienceModel(audienceModel, brief);
-    const creators = ["copy-alchemist", "viral-engineer", "content-strategy", "performance-media"]
+    const creators = ["copy-alchemist", "viral-engineer", "content-strategy", "performance-media", "pricing-strategist"]
       .map((id) => this.agents.get(id))
       .filter((agent): agent is HermesAgent => Boolean(agent));
     const variations = await Promise.all(
@@ -482,7 +535,14 @@ export function defaultHermesAgents(): HermesAgent[] {
     new PerformanceMediaAgent(),
     new GrowthHackerAgent(),
     new SocialIntelligenceAgent(),
+    new PricingStrategyAgent(),
   ];
+}
+
+function extractMonthlyPrice(text: string): number | undefined {
+  const match = text.match(/(?:R\$|\$)\s*(\d+(?:[.,]\d+)?)/);
+  if (!match?.[1]) return undefined;
+  return Number(match[1].replace(",", "."));
 }
 
 export function defaultAudienceModel(segment: string): AudienceModel {

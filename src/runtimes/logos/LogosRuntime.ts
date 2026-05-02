@@ -7,6 +7,10 @@ import {
   RuntimeExpertAgent,
   type RuntimeAgentAnalysis,
 } from "@/runtimes/shared/runtimeAgentScaffold";
+import {
+  LOGOS_PHILOSOPHY_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface LogosQuestion {
   raw: string;
@@ -184,13 +188,13 @@ class MetaphysicsArchitectAgent extends RuntimeExpertAgent {
       supervisorId: "philosophy",
       tier: "COLD",
       tags: ["logos", "metaphysics", "ontology", "epistemology", "meaning"],
-      systemPrompt: `You are the Metaphysics Architect inside Logos.
+      systemPrompt: withRuntimeInstructions(`You are the Metaphysics Architect inside Logos.
 
 Responsibilities:
 - Build a coherent worldview map from the query.
 - Keep ontology, epistemology, and ethics connected.
 - Preserve tension instead of collapsing every paradox too early.
-- Prefer conceptual clarity over mystical fog.`,
+    - Prefer conceptual clarity over mystical fog.`, LOGOS_PHILOSOPHY_RULES),
       tools: [
         buildTool("map_metaphysical_positions", "Map the metaphysical positions latent in a prompt."),
         buildTool("compare_worldview_architectures", "Compare competing worldview architectures."),
@@ -224,13 +228,13 @@ class SecretKnowledgeSocietiesAgent extends RuntimeExpertAgent {
       supervisorId: "ancient",
       tier: "COLD",
       tags: ["hermetic", "initiation", "esoteric", "history", "transmission"],
-      systemPrompt: `You are the Secret Knowledge Societies Analyst inside Logos.
+      systemPrompt: withRuntimeInstructions(`You are the Secret Knowledge Societies Analyst inside Logos.
 
 Responsibilities:
 - Separate documented initiatory history from sensational speculation.
 - Identify what symbolic communities preserved, practiced, or circulated.
 - Explain why secrecy emerges in some traditions without inflating hidden-power myths.
-- Default to textual, historical, and institutional evidence.`,
+    - Default to textual, historical, and institutional evidence.`, LOGOS_PHILOSOPHY_RULES),
       tools: [
         buildTool("audit_initiatory_networks", "Audit initiatory networks with evidence-status labels."),
         buildTool("separate_documented_from_speculative", "Separate documented signals from speculative claims."),
@@ -264,13 +268,13 @@ class PersonalDevelopmentMasterAgent extends RuntimeExpertAgent {
       supervisorId: "philosophy",
       tier: "WARM",
       tags: ["discipline", "purpose", "practice", "character", "self-mastery"],
-      systemPrompt: `You are the Personal Development Master inside Logos.
+      systemPrompt: withRuntimeInstructions(`You are the Personal Development Master inside Logos.
 
 Responsibilities:
 - Convert symbolic and philosophical insight into practice.
 - Prefer repeatable disciplines over motivational excess.
 - Keep shadow risks explicit.
-- Make transformation measurable and embodied.`,
+    - Make transformation measurable and embodied.`, LOGOS_PHILOSOPHY_RULES),
       tools: [
         buildTool("design_self_mastery_protocol", "Design a self-mastery protocol from a philosophical prompt."),
         buildTool("map_shadow_risks", "Map the shadow risks of the chosen development path."),

@@ -7,6 +7,12 @@ import {
   stableId,
   uniqueMerge,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  APOLLO_BAYESIAN_REASONING_RULE,
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export type EvidenceType = "symptom" | "sign" | "lab" | "imaging" | "history" | "genetic";
 export type UrgencyLevel = "routine" | "soon" | "urgent" | "emergent";
@@ -95,6 +101,7 @@ export interface ApolloMemoryState {
 export interface ApolloAgent {
   id: string;
   specialty: string;
+  systemPrompt: string;
   formHypotheses(clinicalCase: ClinicalCase): Promise<MedicalHypothesis[]>;
   updateWithEvidence(
     hypotheses: MedicalHypothesis[],
@@ -106,6 +113,19 @@ export interface ApolloAgent {
     opponentHypothesis: MedicalHypothesis,
   ): Promise<DebateArgument>;
 }
+
+const APOLLO_LIKELIHOOD_RATIOS: Array<{
+  pattern: RegExp;
+  positive: number;
+  negative: number;
+}> = [
+  { pattern: /babinski/i, positive: 9.0, negative: 0.4 },
+  { pattern: /hyperreflexia|hiperreflexia/i, positive: 3.2, negative: 0.55 },
+  { pattern: /vibration|vibratory|vibratoria|vibratória/i, positive: 5.1, negative: 0.6 },
+  { pattern: /optic neuritis|neurite optica|neurite óptica/i, positive: 6.8, negative: 0.5 },
+  { pattern: /relapsing|remitting|surto-remissao|surto-remissão/i, positive: 4.5, negative: 0.65 },
+  { pattern: /family history|historia familiar|história familiar|autoimmune|autoimune/i, positive: 1.8, negative: 0.85 },
+];
 
 export class BayesianDiagnosticEngine {
   updateProbability(prior: number, evidence: Evidence): number {
@@ -125,6 +145,7 @@ export class BayesianDiagnosticEngine {
 
 abstract class BaseApolloAgent implements ApolloAgent {
   protected readonly bayes = new BayesianDiagnosticEngine();
+  readonly systemPrompt: string;
 
   constructor(
     public readonly id: string,
@@ -136,7 +157,14 @@ abstract class BaseApolloAgent implements ApolloAgent {
       keywords: string[];
       missing: string[];
     }>,
-  ) {}
+  ) {
+    this.systemPrompt = withRuntimeInstructions(
+      `Apollo ${specialty} agent. Produce educational medical reasoning with explicit Bayesian odds, likelihood ratios, differential diagnosis and safety limits.`,
+      GLOBAL_CITATION_RULE,
+      CONFIDENCE_CALIBRATION_RULE,
+      APOLLO_BAYESIAN_REASONING_RULE,
+    );
+  }
 
   async formHypotheses(clinicalCase: ClinicalCase): Promise<MedicalHypothesis[]> {
     const text = caseText(clinicalCase);
@@ -222,28 +250,46 @@ abstract class BaseApolloAgent implements ApolloAgent {
     const symptomEvidence = clinicalCase.symptoms.map((symptom) => ({
       type: "symptom" as const,
       finding: symptom,
-      likelihood_ratio_positive: 1.2 + keywordScore(symptom, keywords) * 3,
-      likelihood_ratio_negative: 0.75,
+      ...this.likelihoodRatiosFor(symptom, keywords, 1.2, 0.75, 3),
       present: true,
     }));
+    const historyRatios = this.likelihoodRatiosFor(clinicalCase.history, keywords, 1.1, 0.85, 2.5);
     const historyEvidence: Evidence = {
       type: "history",
       finding: clinicalCase.history,
-      likelihood_ratio_positive: 1.1 + keywordScore(clinicalCase.history, keywords) * 2.5,
-      likelihood_ratio_negative: 0.85,
+      ...historyRatios,
       present: keywordScore(clinicalCase.history, keywords) > 0,
     };
     const labEvidence = Object.entries(clinicalCase.labs).map(([name, value]) => ({
       type: "lab" as const,
       finding: name,
       value,
-      likelihood_ratio_positive: 1.15 + keywordScore(name, keywords) * 2,
-      likelihood_ratio_negative: 0.8,
+      ...this.likelihoodRatiosFor(name, keywords, 1.15, 0.8, 2),
       present: Math.abs(value) > 0,
     }));
     return [...symptomEvidence, historyEvidence, ...labEvidence].filter(
       (item) => item.present || keywordScore(item.finding, keywords) > 0.15,
     );
+  }
+
+  private likelihoodRatiosFor(
+    finding: string,
+    keywords: string[],
+    basePositive: number,
+    baseNegative: number,
+    keywordMultiplier: number,
+  ): Pick<Evidence, "likelihood_ratio_positive" | "likelihood_ratio_negative"> {
+    const known = APOLLO_LIKELIHOOD_RATIOS.find((item) => item.pattern.test(finding));
+    if (known) {
+      return {
+        likelihood_ratio_positive: known.positive,
+        likelihood_ratio_negative: known.negative,
+      };
+    }
+    return {
+      likelihood_ratio_positive: basePositive + keywordScore(finding, keywords) * keywordMultiplier,
+      likelihood_ratio_negative: baseNegative,
+    };
   }
 }
 
@@ -284,6 +330,20 @@ export class NeurologyAgent extends BaseApolloAgent {
         prior: 0.035,
         keywords: ["weakness", "seizure", "headache", "confusion", "avc", "convulsao", "deficit"],
         missing: ["focused neurologic exam", "MRI/CT", "glucose", "EEG if seizure suspected"],
+      },
+      {
+        condition: "Multiple sclerosis or demyelinating disease",
+        icdCode: "G35",
+        prior: 0.018,
+        keywords: ["optic neuritis", "neurite optica", "neurite óptica", "relapsing", "surto-remissao", "surto-remissão", "babinski", "hyperreflexia", "hiperreflexia", "vibration", "vibratoria"],
+        missing: ["MRI brain and spine with contrast", "CSF oligoclonal bands", "evoked potentials", "DMT discussion if confirmed"],
+      },
+      {
+        condition: "Neuroborreliosis (Lyme)",
+        icdCode: "A69.2",
+        prior: 0.012,
+        keywords: ["lyme", "borrelia", "tick", "carrapato", "erythema migrans", "facial palsy", "radiculopathy", "meningitis"],
+        missing: ["tick exposure geography", "two-tier Lyme serology", "CSF if meningitis/radiculitis", "infectious disease review"],
       },
     ]);
   }
@@ -469,6 +529,7 @@ export class ApolloRuntime {
   ): TreatmentPlan {
     const primary = hypotheses[0];
     const redFlags = hasRedFlags(clinicalCase);
+    const demyelinating = primary?.condition.toLowerCase().includes("demyelinating") || primary?.condition.toLowerCase().includes("multiple sclerosis");
     return {
       immediateActions: redFlags
         ? ["avaliar sinais vitais imediatamente", "encaminhar para serviço de urgência se instável"]
@@ -481,6 +542,9 @@ export class ApolloRuntime {
       therapeuticOptions: primary
         ? [
             `conduta guiada por avaliacao presencial para ${primary.condition}`,
+            ...(demyelinating
+              ? ["se EM for confirmada, discutir inicio de DMT com neurologia (ex.: anti-CD20, fumarato, S1P ou natalizumabe conforme risco, fenotipo e JCV)"]
+              : []),
             "evitar tratamento definitivo sem confirmar diagnostico e contraindicações",
           ]
         : ["dados insuficientes para propor terapêutica"],

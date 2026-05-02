@@ -11,6 +11,17 @@ export { PrometheusMindRuntime, PrometheusNindRuntime } from "./prometheus-mind/
 export { SophiaRuntime } from "./sophia/SophiaRuntime";
 export { NexusPrimeRuntime } from "./nexus-prime/NexusPrimeRuntime";
 export { NexusAGIBorderSystem } from "./nexus-prime/NexusPrimeRuntime";
+export { HippocratesSupremeRuntime } from "./hippocrates-supreme/HippocratesSupremeRuntime";
+export { MendeleevRuntime } from "./mendeleev/MendeleevRuntime";
+export { PromptForgeRuntime } from "./prompt-forge/PromptForgeRuntime";
+export { SiliconValleyRuntime } from "./silicon-valley/SiliconValleyRuntime";
+export { UnrealForgeRuntime } from "./unreal-forge/UnrealForgeRuntime";
+export { AegisRuntime } from "./aegis/AegisRuntime";
+export { ContentEmpireRuntime } from "./content-empire/ContentEmpireRuntime";
+export { AdCommanderRuntime } from "./ad-commander/AdCommanderRuntime";
+export { StudioOneRuntime } from "./studio-one/StudioOneRuntime";
+export { WallStreetRuntime } from "./wall-street/WallStreetRuntime";
+export { PixelForgeRuntime } from "./pixel-forge/PixelForgeRuntime";
 
 export type {
   PredictiveConsensus,
@@ -90,3 +101,9 @@ export type {
   NexusPrimeResponse,
   RuntimePerspective,
 } from "./nexus-prime/NexusPrimeRuntime";
+export type {
+  SupremeAgentInsight,
+  SupremeAgentSpec,
+  SupremeRuntimeConfig,
+  SupremeRuntimeResponse,
+} from "./shared/supremeRuntime";

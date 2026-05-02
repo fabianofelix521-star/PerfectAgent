@@ -124,6 +124,7 @@ export class TerminalManager {
     const { exitCode, process } = await webContainerEngine.spawn({
       command,
       args,
+      pipeOutput: false,
     });
     process.output
       .pipeTo(
@@ -163,6 +164,7 @@ export class TerminalManager {
       command: "jsh",
       args: [],
       env: { TERM: "xterm-256color" },
+      pipeOutput: false,
     });
     return process;
   }

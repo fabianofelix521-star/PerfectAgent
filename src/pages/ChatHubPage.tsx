@@ -176,23 +176,26 @@ export function ChatHubPage() {
     threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
   const providerId = resolveProviderId(
     selection.providerId,
-    settings.defaultProviderId,
+    undefined,
     providers,
+    { fallbackToFirst: false },
   );
   const modelId = resolveModelId(
     selection.model,
-    settings.defaultModelId,
+    undefined,
     providerId,
     providers,
     models,
+    { fallbackToFirst: false },
   );
   const explicitDirect = selection.runtimeId === DIRECT_RUNTIME;
   const resolvedRuntimeId = explicitDirect
     ? undefined
     : resolveRuntimeId(
         selection.runtimeId,
-        settings.defaultRuntimeId,
+        undefined,
         runtimes,
+        { fallbackToFirst: false },
       );
   const runtimeValue = explicitDirect
     ? DIRECT_RUNTIME

@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  CheckCircle2,
   Code2,
   MessageSquare,
   Send,
@@ -34,7 +35,6 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
 import JSZip from "jszip";
-import { useNavigate } from "react-router-dom";
 import { SplitPane } from "@/components/SplitPane";
 import { ChatBubble } from "@/components/ChatBubble";
 import {
@@ -57,18 +57,25 @@ import {
 } from "@/services/configSelectors";
 import { createAdapter } from "@/services/adapters";
 import { runAgentLoop, type AgentEvent } from "@/services/agentLoop";
-import {
-  previewManager,
-  flattenProjectToSrcDoc,
-  prewarmWebContainer,
-} from "@/services/previewManager";
+import { filesToWebContainerTree, previewManager } from "@/services/previewManager";
 import { webContainerService } from "@/services/webcontainer";
 import {
   dispatchToPantheon,
   extractTags,
   pantheonContextFor,
 } from "@/services/morpheusBridge";
-import type { ChatMessageV2, ProjectFile } from "@/types";
+import { DeploySettingsModal } from "@/modules/code-studio/components/DeploySettingsModal";
+import {
+  DEPLOY_TARGETS,
+  DEPLOY_TARGET_OPTIONS,
+  getDeployConfigStatus,
+  getDeployTarget,
+  loadDeployConfigs,
+  saveDeployConfigs,
+  type DeployConfigMap,
+  type DeployPlatformConfig,
+} from "@/modules/code-studio/deployTargets";
+import type { ChatMessageV2, ProjectFile, StudioProject } from "@/types";
 import { cn } from "@/utils/cn";
 import { useSmartScroll } from "@/modules/code-studio/hooks/useSmartScroll";
 import { throttle } from "@/utils/throttle";
@@ -91,6 +98,74 @@ function guessLanguage(path: string): string {
   if (path.endsWith(".json")) return "json";
   if (path.endsWith(".md")) return "markdown";
   return "plaintext";
+}
+
+function isContinuationRequest(text: string): boolean {
+  return /^(siga|seguir|continua|continue|prossegue|prossiga|vai|ok|pode continuar|continua ai|continua aí)$/i.test(
+    text.trim(),
+  );
+}
+
+function truncateForPrompt(value: string, max = 12_000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}\n/* ...truncated... */`;
+}
+
+function findLastGeneratedFiles(
+  messages: ChatMessageV2[],
+): ProjectFile[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const files = messages[i].generatedFiles;
+    if (files?.length) return files;
+  }
+  return [];
+}
+
+function buildProjectContext(files: ProjectFile[]): string | undefined {
+  if (!files.length) return undefined;
+  const rendered = files
+    .slice(0, 24)
+    .map(
+      (file) =>
+        `### ${file.path}\n\`\`\`${guessLanguage(file.path)}\n${truncateForPrompt(file.content, 8_000)}\n\`\`\``,
+    )
+    .join("\n\n");
+  return [
+    "CURRENT CODE STUDIO PROJECT FILES:",
+    "Use these as the current source of truth. If the user says to continue, continue from this project and output the COMPLETE updated project again as <boltArtifact> file actions.",
+    rendered,
+  ].join("\n\n");
+}
+
+function buildRecentStudioContext(messages: ChatMessageV2[]): string | undefined {
+  const recent = messages.slice(-8);
+  if (!recent.length) return undefined;
+  return [
+    "RECENT CODE STUDIO CHAT CONTEXT:",
+    recent
+      .map((message) => {
+        const content = truncateForPrompt(message.content.replace(/\s+/g, " "), 1_200);
+        const files = message.generatedFiles?.length
+          ? ` Generated files: ${message.generatedFiles.map((f) => f.path).join(", ")}.`
+          : "";
+        return `${message.role.toUpperCase()}: ${content}${files}`;
+      })
+      .join("\n"),
+  ].join("\n\n");
+}
+
+function buildGenerationRequest(
+  text: string,
+  files: ProjectFile[],
+  continuation: boolean,
+): string {
+  if (!continuation) return text;
+  const fileList = files.map((file) => file.path).join(", ") || "no files captured";
+  return [
+    'The user wrote "siga", meaning "continue". Continue the current Code Studio generation instead of asking what it means.',
+    `Current project files available: ${fileList}.`,
+    "Finish or improve the existing app, fix any incomplete pieces, and output the COMPLETE runnable project as <boltArtifact> with full file contents.",
+  ].join("\n");
 }
 
 /* ============================================================ main component */
@@ -119,16 +194,69 @@ function previousStudioTab(current: StudioTab): StudioTab {
 }
 
 export function CodeStudioPage() {
-  const navigate = useNavigate();
   const { isMobile, isTablet } = useBreakpoint();
   const [mainTab, setMainTab] = useState<MainTab>("chat-preview");
   const [mobileTab, setMobileTab] = useState<StudioTab>("chat");
   const [chatStreaming, setChatStreaming] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [showDeploySettings, setShowDeploySettings] = useState(false);
+  const [deploySettingsTarget, setDeploySettingsTarget] = useState(DEPLOY_TARGETS[0].id);
+  const [deployConfigs, setDeployConfigs] = useState<DeployConfigMap>(() => loadDeployConfigs());
   const projects = useConfig((s) => s.projects);
   const activeProjectId = useConfig((s) => s.activeProjectId);
+  const removeProject = useConfig((s) => s.removeProject);
+  const setActiveProject = useConfig((s) => s.setActiveProject);
+  const addStudioThread = useConfig((s) => s.addStudioThread);
+  const setActiveStudioThread = useConfig((s) => s.setActiveStudioThread);
   const activeProject = projects.find((project) => project.id === activeProjectId);
+
+  useEffect(() => {
+    setProjectName(activeProject?.name ?? "Untitled Project");
+  }, [activeProject?.id, activeProject?.name]);
+
+  function updateDeployConfig(targetId: string, config: DeployPlatformConfig) {
+    setDeployConfigs((current) => {
+      const next = { ...current, [targetId]: config };
+      saveDeployConfigs(next);
+      return next;
+    });
+  }
+
+  function openDeploySettings(targetId = deploySettingsTarget) {
+    setDeploySettingsTarget(targetId);
+    setShowDeploySettings(true);
+  }
+
+  function createNewProjectWorkspace() {
+    const threadId = `st-${uid()}`;
+    addStudioThread({
+      id: threadId,
+      title: "Novo projeto",
+      skillIds: [],
+      messages: [],
+      createdAt: Date.now(),
+    });
+    setActiveStudioThread(threadId);
+    setActiveProject(undefined);
+    setProjectName("Untitled Project");
+    setMainTab("chat-preview");
+    setMobileTab("chat");
+    setShowProjectPicker(false);
+    previewManager.reset();
+    toast.success("Novo projeto limpo pronto para criação.");
+  }
+
+  function deleteProjectFromHistory(project: StudioProject) {
+    if (!confirm(`Excluir "${project.name || "Sem nome"}" do histórico?`)) return;
+    const deletingActive = project.id === activeProjectId;
+    removeProject(project.id);
+    if (deletingActive) {
+      setProjectName("Untitled Project");
+      previewManager.reset();
+    }
+    toast.info("Projeto removido do histórico.");
+  }
 
   async function exportActiveProject() {
     if (!activeProject) {
@@ -178,14 +306,19 @@ export function CodeStudioPage() {
             </p>
           </div>
           <TopBarButton
+            icon={Plus}
+            tooltip="Novo projeto"
+            onClick={createNewProjectWorkspace}
+          />
+          <TopBarButton
             icon={Download}
             tooltip="Export ZIP"
             onClick={() => void exportActiveProject()}
           />
           <TopBarButton
             icon={Settings}
-            tooltip="Settings"
-            onClick={() => navigate("/settings/code-studio")}
+            tooltip="Deploy e MCP"
+            onClick={() => openDeploySettings()}
           />
         </div>
 
@@ -205,8 +338,20 @@ export function CodeStudioPage() {
               {mobileTab === "preview" ? (
                 <ChatPreviewTab projectName={projectName} mode="preview" onStreamingChange={setChatStreaming} />
               ) : null}
-              {mobileTab === "editor" ? <CodeDeployTab mode="editor" /> : null}
-              {mobileTab === "deploy" ? <CodeDeployTab mode="deploy" /> : null}
+              {mobileTab === "editor" ? (
+                <CodeDeployTab
+                  mode="editor"
+                  deployConfigs={deployConfigs}
+                  onOpenDeploySettings={openDeploySettings}
+                />
+              ) : null}
+              {mobileTab === "deploy" ? (
+                <CodeDeployTab
+                  mode="deploy"
+                  deployConfigs={deployConfigs}
+                  onOpenDeploySettings={openDeploySettings}
+                />
+              ) : null}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -245,6 +390,14 @@ export function CodeStudioPage() {
             );
           })}
         </nav>
+        <DeploySettingsModal
+          key={deploySettingsTarget}
+          open={showDeploySettings}
+          configs={deployConfigs}
+          initialTargetId={deploySettingsTarget}
+          onClose={() => setShowDeploySettings(false)}
+          onChangeConfig={updateDeployConfig}
+        />
       </section>
     );
   }
@@ -299,22 +452,31 @@ export function CodeStudioPage() {
                 ) : (
                   <div className="max-h-64 overflow-y-auto">
                     {projects.map((project) => (
-                      <button
-                        key={project.id}
-                        type="button"
-                        onClick={() => {
-                          useConfig.getState().setActiveProject(project.id);
-                          setProjectName(project.name ?? "Untitled Project");
-                          setShowProjectPicker(false);
-                        }}
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50"
-                      >
-                        <FileCode2 className="h-4 w-4 shrink-0 text-slate-400" />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{project.name ?? "Sem nome"}</span>
-                        {project.id === activeProjectId && (
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                        )}
-                      </button>
+                      <div key={project.id} className="flex items-center hover:bg-slate-50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveProject(project.id);
+                            setProjectName(project.name ?? "Untitled Project");
+                            setShowProjectPicker(false);
+                          }}
+                          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left transition"
+                        >
+                          <FileCode2 className="h-4 w-4 shrink-0 text-slate-400" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{project.name ?? "Sem nome"}</span>
+                          {project.id === activeProjectId && (
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteProjectFromHistory(project)}
+                          className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-600"
+                          title="Excluir projeto"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -324,11 +486,7 @@ export function CodeStudioPage() {
           <TopBarButton
             icon={Plus}
             tooltip="New Project"
-            onClick={() => {
-              setProjectName("Untitled Project");
-              useConfig.getState().setActiveProject(undefined);
-              previewManager.reset();
-            }}
+            onClick={createNewProjectWorkspace}
           />
           <TopBarButton
             icon={Download}
@@ -337,18 +495,30 @@ export function CodeStudioPage() {
           />
           <TopBarButton
             icon={Settings}
-            tooltip="Settings"
-            onClick={() => navigate("/settings/code-studio")}
+            tooltip="Deploy e MCP"
+            onClick={() => openDeploySettings()}
           />
         </div>
       </div>
+
+      <DeploySettingsModal
+        key={deploySettingsTarget}
+        open={showDeploySettings}
+        configs={deployConfigs}
+        initialTargetId={deploySettingsTarget}
+        onClose={() => setShowDeploySettings(false)}
+        onChangeConfig={updateDeployConfig}
+      />
 
       {/* ---- Tab Content ---- */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {mainTab === "chat-preview" ? (
           <ChatPreviewTab projectName={projectName} />
         ) : (
-          <CodeDeployTab />
+          <CodeDeployTab
+            deployConfigs={deployConfigs}
+            onOpenDeploySettings={openDeploySettings}
+          />
         )}
       </div>
     </section>
@@ -452,7 +622,6 @@ function ChatPreviewTab({
   const models = useConfig((s) => s.models);
   const runtimes = useConfig((s) => s.runtimes);
   const skills = useConfig((s) => s.skills);
-  const settings = useConfig((s) => s.settings);
   const sel = useConfig((s) => s.studioSelection);
   const setSel = useConfig((s) => s.setStudioSelection);
   const threads = useConfig((s) => s.studioThreads);
@@ -474,8 +643,10 @@ function ChatPreviewTab({
   );
   const resolvedProviderId = useMemo(
     () =>
-      resolveProviderId(sel.providerId, settings.defaultProviderId, providers),
-    [sel.providerId, settings.defaultProviderId, providers],
+      resolveProviderId(sel.providerId, undefined, providers, {
+        fallbackToFirst: false,
+      }),
+    [sel.providerId, providers],
   );
   const modelOptions = useMemo(
     () => getModelOptions(resolvedProviderId, providers, models),
@@ -485,16 +656,20 @@ function ChatPreviewTab({
     () =>
       resolveModelId(
         sel.model,
-        settings.defaultModelId,
+        undefined,
         resolvedProviderId,
         providers,
         models,
+        { fallbackToFirst: false },
       ),
-    [sel.model, settings.defaultModelId, resolvedProviderId, providers, models],
+    [sel.model, resolvedProviderId, providers, models],
   );
   const resolvedRuntimeId = useMemo(
-    () => resolveRuntimeId(sel.runtimeId, settings.defaultRuntimeId, runtimes),
-    [sel.runtimeId, settings.defaultRuntimeId, runtimes],
+    () =>
+      resolveRuntimeId(sel.runtimeId, undefined, runtimes, {
+        fallbackToFirst: false,
+      }),
+    [sel.runtimeId, runtimes],
   );
 
   const activeThread = useMemo(
@@ -522,6 +697,7 @@ function ChatPreviewTab({
 
   const stopRef = useRef<(() => void) | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const restorePreviewRef = useRef<string | null>(null);
   const { containerRef, scrollToBottom, forceScrollToBottom } =
     useSmartScroll<HTMLDivElement>({ threshold: 80 });
   const previousMessageCountRef = useRef(0);
@@ -533,10 +709,79 @@ function ChatPreviewTab({
   );
   useEffect(() => previewManager.subscribe(setPreviewState), []);
 
-  // Pre-warm WebContainer
   useEffect(() => {
-    void prewarmWebContainer();
-  }, []);
+    if (!activeProject?.files.length || streaming) return;
+
+    const currentPreview = previewManager.getState();
+    if (
+      currentPreview.projectId === activeProject.id &&
+      currentPreview.mode === "webcontainer" &&
+      (currentPreview.liveUrl || currentPreview.url)
+    ) {
+      return;
+    }
+    if (
+      currentPreview.projectId === activeProject.id &&
+      (currentPreview.status === "preparing" || currentPreview.status === "booting")
+    ) {
+      return;
+    }
+
+    const restoreKey = `${activeProject.id}:${activeProject.updatedAt}:${activeProject.files.length}`;
+    if (restorePreviewRef.current === restoreKey && currentPreview.status !== "idle") return;
+    restorePreviewRef.current = restoreKey;
+
+    let cancelled = false;
+    void (async () => {
+      const existingUrl = webContainerService.getPreviewUrl();
+      const latestPreview = previewManager.getState();
+      if (existingUrl && latestPreview.projectId === activeProject.id) {
+        previewManager.setLive(existingUrl);
+        return;
+      }
+
+      if (!webContainerService.isSupported()) {
+        previewManager.setError(webContainerService.formatUnsupportedMessage());
+        return;
+      }
+
+      previewManager.startCycle(activeProject.id);
+      previewManager.setBooting("Reabrindo preview do projeto ativo...");
+
+      const boot = await webContainerService.boot();
+      if (cancelled) return;
+      if (!boot.ok) {
+        previewManager.setError(boot.error ?? "WebContainer boot failed");
+        return;
+      }
+
+      previewManager.setBooting("Montando arquivos salvos...");
+      await webContainerService.mount(filesToWebContainerTree(activeProject.files));
+      if (cancelled) return;
+
+      const packageJson = activeProject.files.find(
+        (file) => file.path === "package.json" || file.path.endsWith("/package.json"),
+      )?.content;
+      previewManager.setBooting("Restaurando dependencias...");
+      const install = await webContainerService.installDeps(packageJson);
+      if (cancelled) return;
+      if (!install.success) {
+        previewManager.setError("npm install falhou ao restaurar o preview.");
+        return;
+      }
+
+      previewManager.setBooting("Subindo servidor de preview...");
+      const server = await webContainerService.startDevServer("dev");
+      if (cancelled) return;
+      previewManager.setLive(server.url, server.port);
+    })().catch((err) => {
+      if (!cancelled) previewManager.setError((err as Error).message);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject?.id, activeProject?.updatedAt, activeProject?.files.length, streaming]);
 
   // Ensure a thread exists
   useEffect(() => {
@@ -609,6 +854,16 @@ function ChatPreviewTab({
     if (!text || streaming) return;
 
     const thread = activeThread!;
+    const continuation = isContinuationRequest(text);
+    const existingFiles =
+      activeProject?.files?.length
+        ? activeProject.files
+        : findLastGeneratedFiles(thread.messages);
+    const generationRequest = buildGenerationRequest(
+      text,
+      existingFiles,
+      continuation,
+    );
     setInput("");
     setAttachments([]);
 
@@ -638,10 +893,8 @@ function ChatPreviewTab({
     setStreaming(true);
     setElapsed(0);
 
-    // Start preview cycle
     const now = Date.now();
     const projectId = activeProject?.id ?? `prj-${uid()}`;
-    previewManager.startCycle(projectId);
 
     // Resolve provider spec
     const spec = resolvedProviderId
@@ -676,6 +929,7 @@ function ChatPreviewTab({
     };
 
     let streamedContent = "";
+    let previewCycleStarted = false;
     const throttledPatchAssistant = throttle((content: string) => {
       patchMsg(thread.id, assistantId, {
         content,
@@ -688,10 +942,10 @@ function ChatPreviewTab({
     // the SINGLE streamChat owned by runAgentLoop. Running a second stream
     // here caused the backend to abort one of the two SSE connections, which
     // surfaced as "This operation was aborted" in the chat.
-    const tags = extractTags(text);
+    const tags = extractTags(generationRequest);
     let pantheonContext: string | undefined;
     try {
-      const { winner, task: routerTask } = await dispatchToPantheon(text, {
+      const { winner, task: routerTask } = await dispatchToPantheon(generationRequest, {
         tags,
         timeoutMs: 1200,
         onEvent: (ev) => {
@@ -722,22 +976,34 @@ function ChatPreviewTab({
       );
     }
 
+    const projectContext = buildProjectContext(existingFiles);
+    const recentContext = buildRecentStudioContext(thread.messages);
+    const continuationContext = continuation
+      ? 'The user command "siga" means continue from the existing project. Do not explain the word; generate the next complete project artifact.'
+      : undefined;
     const systemContext =
-      [pantheonContext, skillContext].filter(Boolean).join("\n\n---\n\n") ||
-      undefined;
+      [
+        pantheonContext,
+        skillContext,
+        projectContext,
+        recentContext,
+        continuationContext,
+      ]
+        .filter(Boolean)
+        .join("\n\n---\n\n") || undefined;
 
     try {
       // Use adapter if runtime available, otherwise direct agent loop
-      const runtime =
-        runtimes.find((r) => r.id === resolvedRuntimeId) ?? runtimes[0];
+      const runtime = runtimes.find((r) => r.id === resolvedRuntimeId);
       const adapter = runtime ? createAdapter(runtime) : null;
       const generate = adapter
         ? adapter.generateProject.bind(adapter)
         : runAgentLoop;
 
       const result = await generate({
-        request: text,
+        request: generationRequest,
         spec,
+        providerId: resolvedProviderId,
         model: resolvedModelId,
         systemContext,
         maxIterations: 6,
@@ -773,11 +1039,13 @@ function ChatPreviewTab({
           upsertProject(project);
           setActiveProject(projectId);
 
-          // Track 1: static preview
-          const srcDoc = flattenProjectToSrcDoc(generatedFiles, projectName);
-          if (srcDoc) {
-            previewManager.setStatic(srcDoc);
+          if (!previewCycleStarted) {
+            previewManager.startCycle(projectId);
+            previewCycleStarted = true;
           }
+          previewManager.setBooting(
+            "Arquivos gerados. Iniciando WebContainer real...",
+          );
 
           patchMsg(thread.id, assistantId, {
             generatedFiles,
@@ -791,20 +1059,30 @@ function ChatPreviewTab({
 
       // Finalize
       const errMsg = result.error ?? "";
-      const summary = result.ok
-        ? `Projeto gerado em ${result.iterations} iteracao(oes). ${result.previewUrl ? "Preview ao vivo ativo." : "Preview estatico ativo."}`
+      const livePreviewUrl = result.previewUrl ?? previewManager.getState().liveUrl;
+      const missingLivePreview = result.ok && !livePreviewUrl;
+      const missingLivePreviewMessage =
+        "WebContainer nao publicou uma URL de preview real.";
+      const summary = result.ok && !missingLivePreview
+        ? `Projeto gerado em ${result.iterations} iteracao(oes). Preview ao vivo ativo.`
         : userStopped
           ? "Geração cancelada pelo usuário."
-          : `❌ Falhou: ${errMsg || "erro desconhecido"}`;
+          : `❌ Falhou: ${missingLivePreview ? missingLivePreviewMessage : errMsg || "erro desconhecido"}`;
 
       streamedContent += `\n\n---\n${summary}`;
       patchMsg(thread.id, assistantId, {
         streaming: false,
         content: streamedContent,
-        error: result.ok || userStopped ? undefined : errMsg,
+        error: !missingLivePreview && (result.ok || userStopped)
+          ? undefined
+          : missingLivePreview
+            ? missingLivePreviewMessage
+            : errMsg,
       });
 
-      if (!result.ok && !userStopped && !previewState.staticSrcDoc) {
+      if (missingLivePreview && !userStopped) {
+        previewManager.setError(missingLivePreviewMessage);
+      } else if (!result.ok && !userStopped) {
         previewManager.setError(result.error ?? "Generation failed");
       }
     } catch (err) {
@@ -849,9 +1127,18 @@ function ChatPreviewTab({
     toast.success("Projeto exportado.");
   }
 
-  // Preview iframe source
-  const iframeUrl = previewState.liveUrl ?? previewState.url;
-  const iframeSrcDoc = iframeUrl ? undefined : previewState.staticSrcDoc;
+  // Preview iframe source: exclusively the live WebContainer server URL.
+  const iframeUrl =
+    previewState.mode === "webcontainer"
+      ? previewState.liveUrl ?? previewState.url
+      : undefined;
+  const previewLoading =
+    !iframeUrl &&
+    (previewState.status === "preparing" || previewState.status === "booting");
+  const webContainerSupport = useMemo(
+    () => webContainerService.getSupportStatus(),
+    [previewState.status, previewState.message],
+  );
 
   // Format elapsed
   const elapsedStr =
@@ -859,9 +1146,7 @@ function ChatPreviewTab({
   const previewBadge =
     previewState.mode === "webcontainer"
       ? { label: "Live", color: "bg-emerald-500" }
-      : previewState.mode === "static-iframe"
-        ? { label: "Static", color: "bg-blue-500" }
-        : null;
+      : null;
 
   const leftPane = (
     <div className="flex h-full flex-col overflow-hidden">
@@ -1019,13 +1304,12 @@ function ChatPreviewTab({
 
   const shouldFramePreview = mode === "split";
 
-  const previewSurface = iframeSrcDoc || iframeUrl ? (
+  const previewSurface = iframeUrl ? (
     shouldFramePreview ? (
       <DeviceFrame device={device} className="h-full w-full">
         <iframe
           key={previewKey}
           src={iframeUrl}
-          srcDoc={iframeSrcDoc}
           title="Preview"
           className="h-full w-full border-0"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
@@ -1036,13 +1320,65 @@ function ChatPreviewTab({
       <iframe
         key={previewKey}
         src={iframeUrl}
-        srcDoc={iframeSrcDoc}
         title="Preview"
         className="h-full w-full border-0"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         style={{ background: "#fff" }}
       />
     )
+  ) : previewLoading ? (
+    <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+      <Loader2 className="h-9 w-9 animate-spin text-slate-400" />
+      <div>
+        <p className="text-sm font-semibold text-slate-600">
+          Iniciando servidor...
+        </p>
+        <p className="mt-1 text-xs text-slate-400">
+          npm install + npm run dev no WebContainer
+        </p>
+      </div>
+    </div>
+  ) : previewState.status === "error" ? (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <TerminalIcon className="h-10 w-10 text-rose-300" />
+      <p className="max-w-md text-sm font-medium text-slate-600">
+        {previewState.message ?? "Erro ao iniciar o preview real."}
+      </p>
+      {!webContainerSupport.supported ? (
+        <div className="max-w-md rounded-xl border border-rose-100 bg-white/70 px-3 py-2 text-left text-[11px] text-slate-500">
+          <p className="font-semibold text-slate-700">Diagnostico WebContainer</p>
+          <p>crossOriginIsolated: {String(webContainerSupport.crossOriginIsolated)}</p>
+          <p>SharedArrayBuffer: {String(webContainerSupport.hasSharedArrayBuffer)}</p>
+          <p>iframe: {String(webContainerSupport.inIframe)}</p>
+          <p>host: {webContainerSupport.host ?? "unknown"}</p>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap justify-center gap-2">
+        {!webContainerSupport.supported ? (
+          <button
+            type="button"
+            onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")}
+            className="rounded-xl bg-[#17172d] px-4 py-2 text-xs font-bold text-white shadow hover:bg-slate-800"
+          >
+            Abrir em nova aba isolada
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-xl border border-slate-200 bg-white/70 px-4 py-2 text-xs font-bold text-slate-600 shadow-sm hover:bg-white"
+        >
+          Recarregar
+        </button>
+        <button
+          type="button"
+          onClick={() => previewManager.reset()}
+          className="rounded-xl border border-slate-200 bg-white/70 px-4 py-2 text-xs font-bold text-slate-600 shadow-sm hover:bg-white"
+        >
+          Limpar erro
+        </button>
+      </div>
+    </div>
   ) : (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
       <Eye className="h-10 w-10 text-slate-200" />
@@ -1118,7 +1454,7 @@ function ChatPreviewTab({
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
 
-            {!shouldFramePreview && (iframeSrcDoc || iframeUrl) ? (
+            {!shouldFramePreview && iframeUrl ? (
               <button
                 onClick={() => setPreviewFullscreen(true)}
                 title="Tela cheia"
@@ -1241,7 +1577,7 @@ function ChatPreviewTab({
         </div>
       ) : null}
 
-      {previewFullscreen && (iframeSrcDoc || iframeUrl) ? (
+      {previewFullscreen && iframeUrl ? (
         <div className="fixed inset-0 z-50 bg-black">
           <button
             type="button"
@@ -1254,7 +1590,6 @@ function ChatPreviewTab({
           <iframe
             key={`fullscreen-${previewKey}`}
             src={iframeUrl}
-            srcDoc={iframeSrcDoc}
             title="Preview Fullscreen"
             className="h-full w-full border-0"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
@@ -1284,7 +1619,15 @@ function ChatPreviewTab({
 
 /* ============================================================ Tab 2: Code & Deploy */
 
-function CodeDeployTab({ mode = "split" }: { mode?: "split" | "editor" | "deploy" }) {
+function CodeDeployTab({
+  mode = "split",
+  deployConfigs,
+  onOpenDeploySettings,
+}: {
+  mode?: "split" | "editor" | "deploy";
+  deployConfigs: DeployConfigMap;
+  onOpenDeploySettings: (targetId?: string) => void;
+}) {
   const { isMobile, isTablet } = useBreakpoint();
   const projects = useConfig((s) => s.projects);
   const activeProjectId = useConfig((s) => s.activeProjectId);
@@ -1298,7 +1641,7 @@ function CodeDeployTab({ mode = "split" }: { mode?: "split" | "editor" | "deploy
 
   const [activeFile, setActiveFile] = useState<string | undefined>();
   const [files, setFiles] = useState<ProjectFile[]>([]);
-  const [deployTarget, setDeployTarget] = useState("Vercel");
+  const [deployTarget, setDeployTarget] = useState(DEPLOY_TARGETS[0].id);
   const [terminalLines, setTerminalLines] = useState<string[]>([
     "Welcome to Code Studio terminal.",
   ]);
@@ -1318,6 +1661,11 @@ function CodeDeployTab({ mode = "split" }: { mode?: "split" | "editor" | "deploy
   const activeFileContent = useMemo(
     () => files.find((f) => f.path === activeFile)?.content ?? "",
     [files, activeFile],
+  );
+  const deployTargetDefinition = getDeployTarget(deployTarget);
+  const deployConfigStatus = getDeployConfigStatus(
+    deployTargetDefinition,
+    deployConfigs[deployTargetDefinition.id],
   );
 
   function handleEditorChange(value: string | undefined) {
@@ -1345,15 +1693,34 @@ function CodeDeployTab({ mode = "split" }: { mode?: "split" | "editor" | "deploy
       toast.error("Gere ou abra um projeto antes do deploy.");
       return;
     }
+    const target = getDeployTarget(deployTarget);
+    const status = getDeployConfigStatus(target, deployConfigs[target.id]);
+    if (!status.configured) {
+      const record = {
+        id: `dep-${Date.now().toString(36)}`,
+        target: target.label,
+        status: "failed" as const,
+        at: Date.now(),
+        log: `Configuração incompleta para ${target.label}. Campos pendentes: ${status.missing.join(", ")}. MCP sugerido: ${target.mcp.command}`,
+      };
+      addDeploy(record);
+      toast.error(`Configure ${target.label}: ${status.missing.join(", ")}.`);
+      return;
+    }
     const record = {
       id: `dep-${Date.now().toString(36)}`,
-      target: deployTarget,
-      status: "failed" as const,
+      target: target.label,
+      status: "pending" as const,
       at: Date.now(),
-      log: `${deployTarget} não possui credenciais/endpoints configurados nesta instalação local. Exporte o ZIP ou conecte uma integração primeiro.`,
+      log: [
+        `${target.label} está configurado para orquestração via MCP.` ,
+        `MCP: ${target.mcp.command}`,
+        `Comandos sugeridos: ${target.commands.join(" -> ")}`,
+        "O deploy externo real deve ser executado pelo MCP/CI configurado, mantendo este motor de criação intacto.",
+      ].join("\n"),
     };
     addDeploy(record);
-    toast.error("Deploy externo não configurado. Registro salvo no histórico.");
+    toast.success(`${target.label} pronto para deploy via MCP/CI.`);
   }
 
   async function handleTerminalSubmit() {
@@ -1455,19 +1822,51 @@ function CodeDeployTab({ mode = "split" }: { mode?: "split" | "editor" | "deploy
         <div className="mb-2 flex items-center gap-2">
           <Rocket className="h-4 w-4 text-slate-600" />
           <span className="text-xs font-bold text-slate-700">Deploy</span>
+          <span
+            className={cn(
+              "ml-auto rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em]",
+              deployConfigStatus.configured
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-700",
+            )}
+          >
+            {deployConfigStatus.configured ? "MCP pronto" : "Config pendente"}
+          </span>
         </div>
         <CompactSelect
           value={deployTarget}
           onChange={setDeployTarget}
-          options={[
-            "Vercel",
-            "Netlify",
-            "GitHub Pages",
-            "Docker",
-            "Custom",
-          ].map((t) => ({ value: t, label: t }))}
+          options={DEPLOY_TARGET_OPTIONS}
           placeholder="Target"
         />
+        <div className="mt-2 rounded-2xl border border-white/60 bg-white/55 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            {deployConfigStatus.configured ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            ) : (
+              <Settings className="h-4 w-4 text-amber-500" />
+            )}
+            <p className="truncate text-xs font-bold text-slate-800">
+              {deployTargetDefinition.label}
+            </p>
+          </div>
+          <p className="line-clamp-2 text-[11px] font-medium leading-5 text-slate-500">
+            {deployTargetDefinition.description}
+          </p>
+          {!deployConfigStatus.configured ? (
+            <p className="mt-2 text-[10px] font-bold text-amber-700">
+              Falta: {deployConfigStatus.missing.join(", ")}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onOpenDeploySettings(deployTargetDefinition.id)}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Configurar auth/env/MCP
+          </button>
+        </div>
         <button
           type="button"
           onClick={handleDeploy}

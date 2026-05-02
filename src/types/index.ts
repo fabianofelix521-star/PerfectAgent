@@ -250,6 +250,17 @@ export type RuntimeKind =
   | "logos" // Metaphysical architecture and initiatory-history runtime
   | "prometheus-mind" // Neuroscience and cognitive optimization runtime
   | "nexus-prime" // Meta-runtime orchestrating all cognitive runtimes
+  | "hippocrates-supreme" // Precision medicine and cure-discovery swarm
+  | "mendeleev" // Advanced chemistry and materials science swarm
+  | "prompt-forge" // Meta-prompt engineering swarm
+  | "silicon-valley" // Complete software-company swarm
+  | "unreal-forge" // AAA game-development studio swarm
+  | "aegis" // Continuous cybersecurity defense swarm
+  | "content-empire" // Content, SEO, publishing and analytics automation
+  | "ad-commander" // Paid traffic and conversion swarm
+  | "studio-one" // Streaming/social content production swarm
+  | "wall-street" // Trading, crypto and investment swarm
+  | "pixel-forge" // Graphic design and AI image prompt swarm
   | "stigmergy-nexus" // Vectorial State Space with reactive triggers
   | "ephemeral-genesis" // Just-in-time micro-agent compilation
   | "supreme-coordinator" // Hierarchical swarm: Strategic Layer + 15 Domain Supervisors + Infra

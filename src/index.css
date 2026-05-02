@@ -127,6 +127,12 @@ input {
   }
 }
 
+@media (hover: none) {
+  .group .message-action-bar.opacity-0 {
+    opacity: 1 !important;
+  }
+}
+
 /* Focus rings (a11y) */
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.55);
@@ -245,6 +251,19 @@ input {
     radial-gradient(circle at 72% 54%, rgba(164, 183, 255, 0.42), transparent 30%),
     radial-gradient(circle at 34% 12%, rgba(255, 255, 255, 0.95), transparent 34%),
     linear-gradient(135deg, rgba(241, 248, 255, 0.88) 0%, rgba(250, 247, 237, 0.82) 43%, rgba(214, 225, 255, 0.9) 100%);
+}
+
+.chat-surface .ai-message-renderer,
+.chat-surface .ai-message-renderer * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-surface .ai-message-renderer pre,
+.chat-surface .ai-message-renderer table {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 :root.dark .chat-surface {

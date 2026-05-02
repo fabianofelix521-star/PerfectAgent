@@ -21,7 +21,18 @@ import { searchKnowledge } from "./knowledge";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
+const DEFAULT_DEV_AUTH_KEY = "pa-local-dev-key";
 const API_AUTH_KEY = process.env.NEXUS_AUTH_KEY ?? process.env.APP_AUTH_KEY ?? "";
+const AUTH_COOKIE_NAME = "nexus_auth";
+const AUTH_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const AUTH_COOKIE_SECURE = process.env.NEXUS_AUTH_COOKIE_SECURE === "true";
+const ALLOW_DEV_AUTH_FALLBACK =
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXUS_ALLOW_DEV_AUTH_FALLBACK !== "false";
+const ACCEPTED_API_AUTH_KEYS = [
+  API_AUTH_KEY,
+  API_AUTH_KEY && ALLOW_DEV_AUTH_FALLBACK ? DEFAULT_DEV_AUTH_KEY : "",
+].filter(Boolean);
 const DIST_DIR = path.resolve(process.cwd(), "dist");
 const DIST_INDEX = path.join(DIST_DIR, "index.html");
 
@@ -37,11 +48,14 @@ function loadLangGraph(): Promise<LangGraphModule> {
 }
 
 app.use(cors({ origin: true }));
-// Cross-Origin Resource Policy / Embedder Policy: required so the Vite dev page
-// (which sets COEP=require-corp for WebContainer) can consume responses from
-// this API on a different port. Without these headers the browser silently
-// terminates streaming responses, surfacing as "This operation was aborted".
+// Cross-origin isolation is required by WebContainer (SharedArrayBuffer).
+// In dev the Vite server sets COOP/COEP for the frontend, while this backend
+// still needs CORP so the isolated page can consume API responses on :3336.
+// In production/CasaOS this Express process serves the built frontend itself,
+// so it must also set COOP/COEP on document/static responses.
 app.use((_req, res, next) => {
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 });
@@ -53,17 +67,85 @@ function safeTokenEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-app.use("/api", (req, res, next) => {
-  if (!API_AUTH_KEY || req.path === "/health") return next();
+function isAcceptedApiToken(token: string): boolean {
+  return Boolean(token) && ACCEPTED_API_AUTH_KEYS.some((key) => safeTokenEqual(token, key));
+}
+
+function readCookies(headerValue: string | undefined): Record<string, string> {
+  if (!headerValue) return {};
+  return headerValue.split(";").reduce<Record<string, string>>((cookies, chunk) => {
+    const separatorIndex = chunk.indexOf("=");
+    if (separatorIndex <= 0) return cookies;
+    const name = chunk.slice(0, separatorIndex).trim();
+    const value = chunk.slice(separatorIndex + 1).trim();
+    if (!name) return cookies;
+    cookies[name] = decodeURIComponent(value);
+    return cookies;
+  }, {});
+}
+
+function getRequestAuthToken(req: express.Request): string {
   const headerToken = req.header("x-nexus-auth") ?? req.header("x-api-key") ?? "";
   const bearerToken = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const token = headerToken || bearerToken;
-  if (token && safeTokenEqual(token, API_AUTH_KEY)) return next();
-  return res.status(401).json({ ok: false, error: "unauthorized" });
+  const cookieToken = readCookies(req.header("cookie"))[AUTH_COOKIE_NAME] ?? "";
+  return headerToken || bearerToken || cookieToken;
+}
+
+function hasAuthSessionCookie(req: express.Request): boolean {
+  const cookieToken = readCookies(req.header("cookie"))[AUTH_COOKIE_NAME] ?? "";
+  return isAcceptedApiToken(cookieToken);
+}
+
+function isPublicApiPath(pathname: string): boolean {
+  return pathname === "/health" || pathname === "/auth/login" || pathname === "/auth/logout";
+}
+
+app.use("/api", (req, res, next) => {
+  if (!API_AUTH_KEY || isPublicApiPath(req.path)) return next();
+  const token = getRequestAuthToken(req);
+  if (isAcceptedApiToken(token)) return next();
+  return res.status(401).json({
+    ok: false,
+    code: "BACKEND_UNAUTHORIZED",
+    error:
+      "Backend unauthorized: x-nexus-auth nao bate com NEXUS_AUTH_KEY/APP_AUTH_KEY do servidor.",
+  });
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, ts: Date.now() });
+  res.json({ ok: true, ts: Date.now(), authRequired: Boolean(API_AUTH_KEY) });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  if (!API_AUTH_KEY) {
+    return res.json({ ok: true, authenticated: true, authRequired: false });
+  }
+  const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+  if (!isAcceptedApiToken(key)) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  res.cookie(AUTH_COOKIE_NAME, key, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: AUTH_COOKIE_SECURE,
+    path: "/",
+    maxAge: AUTH_COOKIE_MAX_AGE_MS,
+  });
+  return res.json({ ok: true, authenticated: true });
+});
+
+app.post("/api/auth/logout", (_req, res) => {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: AUTH_COOKIE_SECURE,
+    path: "/",
+  });
+  return res.json({ ok: true, authenticated: false });
+});
+
+app.get("/api/auth/session", (_req, res) => {
+  res.json({ ok: true, authenticated: true });
 });
 
 app.post("/api/knowledge/search", async (req, res) => {
@@ -141,6 +223,24 @@ function buildUrl(spec: ProviderSpec, kind: "chat" | "models"): string {
       `key=${encodeURIComponent(spec.apiKey)}`;
   }
   return url;
+}
+
+function buildAuthOnlyHeaders(spec: ProviderSpec): Record<string, string> {
+  const h: Record<string, string> = {
+    ...(spec.extraHeaders ?? {}),
+  };
+  if (!spec.apiKey || spec.authMode === "none") return h;
+  switch (spec.authMode ?? "bearer") {
+    case "bearer":
+      h["authorization"] = `Bearer ${spec.apiKey}`;
+      break;
+    case "header":
+      h[spec.authHeaderName ?? "x-api-key"] = spec.apiKey;
+      break;
+    case "query":
+      break;
+  }
+  return h;
 }
 
 /* ----------------------------------------------------- /api/providers/* ---*/
@@ -227,6 +327,385 @@ function extractModels(data: unknown): Array<{ id: string; name?: string }> {
       .filter((m) => m.id);
   }
   return [];
+}
+
+/* -------------------------------------------------------- /api/media/* ---*/
+
+type MediaKind = "image" | "audio" | "video";
+
+interface MediaInputFile {
+  name: string;
+  type: string;
+  dataUrl: string;
+}
+
+interface MediaGenerateRequest {
+  kind: MediaKind;
+  providerId: string;
+  presetId?: string;
+  spec: ProviderSpec;
+  model: string;
+  prompt: string;
+  voiceName?: string;
+  audioMode?: string;
+  voiceClone?: MediaInputFile;
+  lipSync?: {
+    audio?: MediaInputFile;
+    text?: string;
+  };
+}
+
+interface MediaGenerateResult {
+  kind: MediaKind;
+  url: string;
+  filename: string;
+  mimeType: string;
+  createdAt: number;
+  providerId: string;
+  model: string;
+}
+
+app.post("/api/media/generate", async (req, res) => {
+  const body = req.body as MediaGenerateRequest | undefined;
+  if (!body?.kind || !body?.spec?.baseUrl || !body?.model || !body?.prompt?.trim()) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing kind, spec.baseUrl, model or prompt",
+    });
+  }
+  try {
+    const data = await generateMedia(body);
+    return res.json({ ok: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const unsupported = /nao suporta|não suporta|unsupported/i.test(message);
+    return res.status(unsupported ? 501 : 502).json({ ok: false, error: message });
+  }
+});
+
+async function generateMedia(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  const providerKey = `${body.providerId} ${body.presetId ?? ""} ${body.spec.baseUrl}`.toLowerCase();
+
+  if (providerKey.includes("openai") || body.spec.baseUrl.includes("api.openai.com")) {
+    if (body.kind === "image") return generateOpenAiImage(body);
+    if (body.kind === "audio") return generateOpenAiAudio(body);
+    throw new Error("OpenAI direto nesta rota nao suporta video. Use um provider de video como Replicate ou um custom endpoint.");
+  }
+
+  if (providerKey.includes("elevenlabs")) {
+    if (body.kind !== "audio") throw new Error("ElevenLabs nesta rota suporta apenas audio.");
+    return generateElevenLabsAudio(body);
+  }
+
+  if (providerKey.includes("stability")) {
+    if (body.kind !== "image") throw new Error("Stability nesta rota suporta apenas imagem.");
+    return generateStabilityImage(body);
+  }
+
+  if (providerKey.includes("replicate")) {
+    return generateReplicateMedia(body);
+  }
+
+  if (body.spec.shape === "openai") {
+    if (body.kind === "image") return generateOpenAiImage(body);
+    if (body.kind === "audio") return generateOpenAiAudio(body);
+  }
+
+  throw new Error(
+    "Provider ainda nao suporta geracao direta nesta rota. Use Preparar geracao para o fluxo agentico ou configure OpenAI, ElevenLabs, Stability ou Replicate.",
+  );
+}
+
+async function generateOpenAiImage(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  const response = await fetch(`${mediaBaseUrl(body.spec)}/images/generations`, {
+    method: "POST",
+    headers: buildHeaders(body.spec),
+    body: JSON.stringify({
+      model: body.model,
+      prompt: body.prompt,
+      n: 1,
+      size: "1024x1024",
+    }),
+  });
+  const data = await readJsonOrThrow(response);
+  const dataUrl = extractBase64DataUrl(data, "image/png");
+  const url = dataUrl ?? extractMediaUrl(data);
+  if (!url) throw new Error("OpenAI nao retornou URL/base64 de imagem.");
+  return mediaResult(body, url, guessMimeType(url, "image"), "png");
+}
+
+async function generateOpenAiAudio(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  const response = await fetch(`${mediaBaseUrl(body.spec)}/audio/speech`, {
+    method: "POST",
+    headers: buildHeaders(body.spec),
+    body: JSON.stringify({
+      model: body.model,
+      voice: body.voiceName || "alloy",
+      input: body.prompt,
+      response_format: "mp3",
+    }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const mimeType = response.headers.get("content-type")?.split(";")[0] || "audio/mpeg";
+  const url = dataUrlFromArrayBuffer(await response.arrayBuffer(), mimeType);
+  return mediaResult(body, url, mimeType, extensionForMime(mimeType, "mp3"));
+}
+
+async function generateElevenLabsAudio(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  const voiceId = elevenLabsVoiceId(body.voiceName || "Rachel");
+  const response = await fetch(`${mediaBaseUrl(body.spec)}/text-to-speech/${encodeURIComponent(voiceId)}/stream`, {
+    method: "POST",
+    headers: buildHeaders(body.spec),
+    body: JSON.stringify({
+      text: body.prompt,
+      model_id: body.model,
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: body.voiceClone ? 0.85 : 0.7,
+        style: 0.25,
+        use_speaker_boost: true,
+      },
+    }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const mimeType = response.headers.get("content-type")?.split(";")[0] || "audio/mpeg";
+  const url = dataUrlFromArrayBuffer(await response.arrayBuffer(), mimeType);
+  return mediaResult(body, url, mimeType, extensionForMime(mimeType, "mp3"));
+}
+
+async function generateStabilityImage(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  if (/stable-image-core/i.test(body.model)) {
+    const origin = new URL(body.spec.baseUrl).origin;
+    const form = new FormData();
+    form.append("prompt", body.prompt);
+    form.append("aspect_ratio", "1:1");
+    form.append("output_format", "png");
+    const response = await fetch(`${origin}/v2beta/stable-image/generate/core`, {
+      method: "POST",
+      headers: {
+        ...buildAuthOnlyHeaders(body.spec),
+        accept: "image/*",
+      },
+      body: form,
+    });
+    if (!response.ok) throw new Error(await readError(response));
+    const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png";
+    const url = dataUrlFromArrayBuffer(await response.arrayBuffer(), mimeType);
+    return mediaResult(body, url, mimeType, extensionForMime(mimeType, "png"));
+  }
+
+  const response = await fetch(`${mediaBaseUrl(body.spec)}/generation/${encodeURIComponent(body.model)}/text-to-image`, {
+    method: "POST",
+    headers: {
+      ...buildHeaders(body.spec),
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      text_prompts: [{ text: body.prompt }],
+      cfg_scale: 7,
+      height: 1024,
+      width: 1024,
+      samples: 1,
+      steps: 30,
+    }),
+  });
+  const data = await readJsonOrThrow(response);
+  const artifact = Array.isArray((data as { artifacts?: unknown[] }).artifacts)
+    ? ((data as { artifacts?: Array<{ base64?: string }> }).artifacts ?? [])[0]
+    : undefined;
+  if (!artifact?.base64) throw new Error("Stability nao retornou artefato base64.");
+  return mediaResult(body, `data:image/png;base64,${artifact.base64}`, "image/png", "png");
+}
+
+async function generateReplicateMedia(body: MediaGenerateRequest): Promise<MediaGenerateResult> {
+  const base = mediaBaseUrl(body.spec);
+  const modelSlug = body.model.includes("/") ? body.model.replace(/^\/+|\/+$/g, "") : "";
+  const url = modelSlug ? `${base}/models/${modelSlug}/predictions` : `${base}/predictions`;
+  const input: Record<string, unknown> = {
+    prompt: body.prompt,
+  };
+  if (body.kind === "audio") {
+    input.text = body.prompt;
+    input.voice = body.voiceName || "default";
+    if (body.voiceClone?.dataUrl) input.audio = body.voiceClone.dataUrl;
+  }
+  if (body.kind === "video") {
+    input.text = body.lipSync?.text || body.prompt;
+    input.script = body.lipSync?.text || body.prompt;
+    if (body.lipSync?.audio?.dataUrl) input.audio = body.lipSync.audio.dataUrl;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildHeaders(body.spec),
+    body: JSON.stringify(modelSlug ? { input } : { version: body.model, input }),
+  });
+  const created = await readJsonOrThrow(response);
+  const prediction = await pollReplicatePrediction(body.spec, created);
+  const output = isRecord(prediction) && "output" in prediction ? prediction.output : prediction;
+  const mediaUrl = extractMediaUrl(output);
+  if (!mediaUrl) throw new Error("Replicate finalizou sem URL de midia no output.");
+  const mimeType = guessMimeType(mediaUrl, body.kind);
+  return mediaResult(body, mediaUrl, mimeType, extensionForMime(mimeType, body.kind === "image" ? "png" : body.kind === "audio" ? "mp3" : "mp4"));
+}
+
+async function pollReplicatePrediction(spec: ProviderSpec, created: unknown): Promise<unknown> {
+  if (!isRecord(created)) return created;
+  const status = typeof created.status === "string" ? created.status : "";
+  if (["succeeded", "failed", "canceled"].includes(status)) {
+    if (status !== "succeeded") throw new Error(`Replicate falhou: ${status}`);
+    return created;
+  }
+  const getUrl = isRecord(created.urls) && typeof created.urls.get === "string"
+    ? created.urls.get
+    : typeof created.id === "string"
+      ? `${mediaBaseUrl(spec)}/predictions/${created.id}`
+      : "";
+  if (!getUrl) return created;
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await delay(2000);
+    const response = await fetch(getUrl, {
+      headers: buildHeaders(spec),
+    });
+    const current = await readJsonOrThrow(response);
+    if (!isRecord(current)) continue;
+    const currentStatus = typeof current.status === "string" ? current.status : "";
+    if (currentStatus === "succeeded") return current;
+    if (currentStatus === "failed" || currentStatus === "canceled") {
+      const error = typeof current.error === "string" ? current.error : currentStatus;
+      throw new Error(`Replicate falhou: ${error}`);
+    }
+  }
+  throw new Error("Timeout: Replicate nao retornou midia em 60s.");
+}
+
+function mediaBaseUrl(spec: ProviderSpec): string {
+  return spec.baseUrl.replace(/\/+$/, "");
+}
+
+function mediaResult(
+  body: MediaGenerateRequest,
+  url: string,
+  mimeType: string,
+  extension: string,
+): MediaGenerateResult {
+  return {
+    kind: body.kind,
+    url,
+    filename: `${body.kind}-${Date.now()}.${extension}`,
+    mimeType,
+    createdAt: Date.now(),
+    providerId: body.providerId,
+    model: body.model,
+  };
+}
+
+async function readJsonOrThrow(response: Response): Promise<unknown> {
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+async function readError(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  return `HTTP ${response.status}: ${text.slice(0, 800) || response.statusText}`;
+}
+
+function extractBase64DataUrl(value: unknown, fallbackMime: string): string | null {
+  if (!isRecord(value)) return null;
+  const direct = typeof value.b64_json === "string" ? value.b64_json : undefined;
+  if (direct) return `data:${fallbackMime};base64,${direct}`;
+  if (Array.isArray(value.data)) {
+    for (const item of value.data) {
+      if (!isRecord(item)) continue;
+      const b64 = typeof item.b64_json === "string" ? item.b64_json : typeof item.base64 === "string" ? item.base64 : "";
+      if (b64) return `data:${fallbackMime};base64,${b64}`;
+    }
+  }
+  return null;
+}
+
+function extractMediaUrl(value: unknown): string | null {
+  if (typeof value === "string") {
+    return /^(https?:|data:)/i.test(value) ? value : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractMediaUrl(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (isRecord(value)) {
+    for (const key of ["url", "image", "audio", "video", "file", "output"]) {
+      const found = extractMediaUrl(value[key]);
+      if (found) return found;
+    }
+    for (const item of Object.values(value)) {
+      const found = extractMediaUrl(item);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function dataUrlFromArrayBuffer(buffer: ArrayBuffer, mimeType: string): string {
+  return `data:${mimeType};base64,${Buffer.from(buffer).toString("base64")}`;
+}
+
+function guessMimeType(url: string, kind: MediaKind): string {
+  const lower = url.split("?")[0]?.toLowerCase() ?? "";
+  if (url.startsWith("data:")) {
+    return /^data:([^;,]+)/.exec(url)?.[1] ?? defaultMime(kind);
+  }
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".webm")) return "video/webm";
+  if (lower.endsWith(".mov")) return "video/quicktime";
+  if (lower.endsWith(".mp4")) return "video/mp4";
+  return defaultMime(kind);
+}
+
+function defaultMime(kind: MediaKind): string {
+  if (kind === "image") return "image/png";
+  if (kind === "audio") return "audio/mpeg";
+  return "video/mp4";
+}
+
+function extensionForMime(mimeType: string, fallback: string): string {
+  const map: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+  };
+  return map[mimeType] ?? fallback;
+}
+
+function elevenLabsVoiceId(voiceName: string): string {
+  const voices: Record<string, string> = {
+    Rachel: "21m00Tcm4TlvDq8ikWAM",
+    Bella: "EXAVITQu4vr4xnSDxMaL",
+    Antoni: "ErXwobaYiN019PkySvjV",
+    Elli: "MF3mGyEYCl7XYWbV9V6O",
+    Josh: "TxGEqnHWrfWFTfGW9XjX",
+  };
+  return voices[voiceName] ?? voiceName;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* ---------------------------------------------------- /api/chat/stream ---*/
@@ -1015,8 +1494,17 @@ app.post("/api/runtimes/proxy", async (req, res) => {
 });
 
 if (existsSync(DIST_INDEX)) {
-  app.use(express.static(DIST_DIR));
-  app.get(/^(?!\/api).*/, (_req, res, next) => {
+  app.use(express.static(DIST_DIR, { index: false }));
+  app.get(/^(?!\/api).*/, (req, res, next) => {
+    if (/\.[a-z0-9]+$/i.test(req.path)) {
+      next();
+      return;
+    }
+    if (API_AUTH_KEY && req.path !== "/login" && !hasAuthSessionCookie(req)) {
+      const params = new URLSearchParams({ next: req.originalUrl });
+      res.redirect(302, `/login?${params.toString()}`);
+      return;
+    }
     res.sendFile(DIST_INDEX, (err) => {
       if (err) next(err);
     });

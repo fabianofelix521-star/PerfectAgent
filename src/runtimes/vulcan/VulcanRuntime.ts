@@ -7,6 +7,12 @@ import {
   PersistentCognitiveMemory,
   qualityFromSignals,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  VULCAN_ARCHITECTURE_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface CodeHotspot {
   file: string;
@@ -98,11 +104,21 @@ export interface VulcanMemoryState {
 
 interface VulcanReviewAgent {
   id: string;
+  systemPrompt: string;
   review(diff: CodeDiff): Promise<ReviewFinding[]>;
 }
 
 abstract class BaseVulcanAgent implements VulcanReviewAgent {
-  constructor(public readonly id: string) {}
+  readonly systemPrompt: string;
+
+  constructor(public readonly id: string, extraPrompt?: string) {
+    this.systemPrompt = withRuntimeInstructions(
+      `Vulcan ${id} agent. Review software changes for architecture, security, performance, tests and operational resilience with concrete file-level recommendations.`,
+      GLOBAL_CITATION_RULE,
+      CONFIDENCE_CALIBRATION_RULE,
+      extraPrompt,
+    );
+  }
   abstract review(diff: CodeDiff): Promise<ReviewFinding[]>;
 
   protected fileScore(file: CodeFileSnapshot, keywords: string[]): number {
@@ -112,7 +128,7 @@ abstract class BaseVulcanAgent implements VulcanReviewAgent {
 
 export class ArchitectureEvolutionAgent extends BaseVulcanAgent {
   constructor() {
-    super("architecture");
+    super("architecture", VULCAN_ARCHITECTURE_RULES);
   }
 
   async review(diff: CodeDiff): Promise<ReviewFinding[]> {

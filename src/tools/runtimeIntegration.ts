@@ -81,6 +81,77 @@ export const RUNTIME_TOOL_MAP: Record<string, string[]> = {
     "multi-source-synthesizer",
     "knowledge-suprema",
   ],
+  "hippocrates-supreme": [
+    "knowledge-suprema",
+    "hypothesis-generator",
+    "bayesian-updater",
+    "contradiction-detector",
+    "report-generator",
+  ],
+  mendeleev: [
+    "hypothesis-generator",
+    "causal-reasoning",
+    "multi-source-synthesizer",
+    "report-generator",
+  ],
+  "prompt-forge": [
+    "tool-inspector",
+    "tool-optimizer",
+    "tool-evolution",
+    "contradiction-detector",
+    "report-generator",
+  ],
+  "silicon-valley": [
+    "code-deployer",
+    "tool-inspector",
+    "tool-optimizer",
+    "pattern-extractor",
+    "report-generator",
+  ],
+  "unreal-forge": [
+    "narrative-builder",
+    "cross-domain-bridge",
+    "insight-crystallizer",
+    "report-generator",
+  ],
+  aegis: [
+    "tool-inspector",
+    "contradiction-detector",
+    "pattern-extractor",
+    "knowledge-graph",
+    "report-generator",
+  ],
+  "content-empire": [
+    "social-radar",
+    "content-publisher",
+    "narrative-builder",
+    "report-generator",
+  ],
+  "ad-commander": [
+    "social-radar",
+    "causal-reasoning",
+    "counterfactual-reasoning",
+    "report-generator",
+  ],
+  "studio-one": [
+    "social-radar",
+    "narrative-builder",
+    "insight-crystallizer",
+    "report-generator",
+  ],
+  "wall-street": [
+    "dark-pool-detector",
+    "blockchain-scanner",
+    "social-radar",
+    "bayesian-updater",
+    "automated-trader",
+  ],
+  "pixel-forge": [
+    "narrative-builder",
+    "cross-domain-bridge",
+    "insight-crystallizer",
+    "report-generator",
+  ],
 };
 
 export function getToolsForRuntime(runtimeId: string): string[] {

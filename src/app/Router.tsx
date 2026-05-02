@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useState,
   type ComponentType,
   type ReactNode,
 } from "react";
@@ -41,10 +42,15 @@ import { BrandLockup, BrandMark } from "@/components/Brand";
 import { APP_BRAND_NAME, useConfig } from "@/stores/config";
 import { useSidebarStore } from "@/core/state/navigationStore";
 import { useBreakpoint } from "@/shared/hooks/useBreakpoint";
+import {
+  API_UNAUTHORIZED_EVENT,
+  api,
+} from "@/services/api";
 import type { AppRoute } from "@/types";
 import { cn } from "@/utils/cn";
 
 type ModuleName =
+  | "Login"
   | "Dashboard"
   | "ChatHub"
   | "CodeStudio"
@@ -68,6 +74,7 @@ type ModuleName =
   | "NotFound";
 
 export const ROUTES: Array<AppRoute<ModuleName>> = [
+  { path: "/login", module: "Login" },
   { path: "/", module: "Dashboard" },
   { path: "/chat", module: "ChatHub" },
   { path: "/chat/:sessionId", module: "ChatHub" },
@@ -96,6 +103,7 @@ export const ROUTES: Array<AppRoute<ModuleName>> = [
 ];
 
 const Dashboard = lazyNamed(() => import("@/pages/DashboardPage"), "DashboardPage");
+const LoginPage = lazyNamed(() => import("@/pages/LoginPage"), "LoginPage");
 const ChatHub = lazyNamed(() => import("@/pages/ChatHubPage"), "ChatHubPage");
 const CodeStudio = lazyNamed(
   () => import("@/pages/CodeStudioPage"),
@@ -168,7 +176,15 @@ export function AppRouter() {
   return (
     <main className="absolute inset-0 flex min-h-0 items-center justify-center p-2 sm:p-3">
       <Routes>
-        <Route element={<AppShell />}>
+        <Route
+          path="login"
+          element={
+            <RouteFrame>
+              <LoginPage />
+            </RouteFrame>
+          }
+        />
+        <Route element={<RequireApiAuth><AppShell /></RequireApiAuth>}>
           <Route
             index
             element={
@@ -461,6 +477,94 @@ export function AppRouter() {
         </Route>
       </Routes>
     </main>
+  );
+}
+
+type LoginReason = "missing" | "invalid";
+
+function RequireApiAuth({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const [state, setState] = useState<"checking" | "ready" | "login">("checking");
+  const [reason, setReason] = useState<LoginReason>("missing");
+
+  useEffect(() => {
+    let active = true;
+
+    const check = async () => {
+      setState("checking");
+      const health = await api.health();
+      if (!active) return;
+      if (!health.ok || !health.authRequired) {
+        setState("ready");
+        return;
+      }
+      const session = await api.authSession();
+      if (!active) return;
+      if (session.ok) {
+        setState("ready");
+        return;
+      }
+      setReason("missing");
+      setState("login");
+    };
+
+    void check();
+    return () => {
+      active = false;
+    };
+  }, [location.pathname, location.search, location.hash]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setReason("invalid");
+      setState("login");
+    };
+
+    window.addEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, []);
+
+  if (state === "checking") return <AuthLoadingScreen />;
+  if (state === "login") {
+    const params = new URLSearchParams({
+      next: `${location.pathname}${location.search}${location.hash}`,
+      reason,
+    });
+    return <Navigate to={`/login?${params.toString()}`} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AuthLoadingScreen() {
+  return (
+    <div className="glass-shell relative flex h-[97vh] w-full max-w-[98vw] items-center justify-center overflow-hidden rounded-[28px] border border-white/60 bg-white/45 p-6 shadow-[0_42px_130px_rgba(69,78,133,0.34)] backdrop-blur-3xl lg:h-[98vh] lg:rounded-[40px]">
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="fx-card flex w-full max-w-md flex-col items-center rounded-[28px] border border-white/80 bg-white/75 px-6 py-8 text-center shadow-[0_20px_70px_rgba(69,78,133,0.18)]"
+      >
+        <BrandLockup compact iconSize={44} caption="Auth handshake" className="mb-4" />
+        <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">
+          Verificando acesso
+        </div>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
+          Validando sua sessão
+        </h1>
+        <p className="mt-2 max-w-sm text-sm font-medium leading-6 text-slate-600">
+          A API está protegida. O app está conferindo sua sessão segura antes de liberar o workspace.
+        </p>
+        <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+          <motion.div
+            className="h-full rounded-full bg-[#17172d]"
+            initial={{ x: "-100%" }}
+            animate={{ x: ["-100%", "100%"] }}
+            transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+          />
+        </div>
+      </motion.div>
+    </div>
   );
 }
 

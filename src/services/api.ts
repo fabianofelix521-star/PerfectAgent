@@ -6,6 +6,10 @@ import type {
 } from "@/core/knowledge/types";
 import { useConfig } from "@/stores/config";
 
+export const CLIENT_AUTH_STORAGE_KEY = "pa:nexusAuthKey";
+export const API_UNAUTHORIZED_EVENT = "nexus:api-unauthorized";
+const DEV_FALLBACK_AUTH_KEY = "pa-local-dev-key";
+
 export const API_BASE = (() => {
   if (typeof window === "undefined") return "http://127.0.0.1:3336";
   // Vite dev: same host, port 3336. Production: same origin (assumed reverse-proxied).
@@ -15,26 +19,83 @@ export const API_BASE = (() => {
   return window.location.origin;
 })();
 
+function getViteAuthKey(): string {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  return env?.VITE_NEXUS_AUTH_KEY?.trim() ?? "";
+}
+
 export function getClientApiAuthKey(): string {
   try {
+    const envKey = getViteAuthKey();
+    if (envKey) return envKey;
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+    if (typeof window !== "undefined") {
+      const localOverride = window.localStorage.getItem(CLIENT_AUTH_STORAGE_KEY)?.trim();
+      if (localOverride) return localOverride;
+    }
     const configuredKey = useConfig.getState().settings.masterKey?.trim();
+    if (configuredKey === DEV_FALLBACK_AUTH_KEY && !isLocalHost) return "";
     if (configuredKey) return configuredKey;
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem("pa:nexusAuthKey")?.trim() ?? "";
+    return "";
   } catch {
     return "";
   }
 }
 
-export function apiHeaders(headers?: HeadersInit): Headers {
+export function persistClientApiAuthKey(value: string) {
+  const nextKey = value.trim();
+  try {
+    if (typeof window !== "undefined") {
+      if (nextKey) window.localStorage.setItem(CLIENT_AUTH_STORAGE_KEY, nextKey);
+      else window.localStorage.removeItem(CLIENT_AUTH_STORAGE_KEY);
+    }
+    useConfig.getState().setSettings({ masterKey: nextKey });
+  } catch {
+    // Best effort persistence only.
+  }
+}
+
+export function clearClientApiAuthKey() {
+  persistClientApiAuthKey("");
+}
+
+export function apiHeaders(headers?: HeadersInit, authKey = getClientApiAuthKey()): Headers {
   const nextHeaders = new Headers(headers);
-  const authKey = getClientApiAuthKey();
   if (authKey) nextHeaders.set("x-nexus-auth", authKey);
   return nextHeaders;
 }
 
-export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  return fetch(input, { ...init, headers: apiHeaders(init.headers) });
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  authKey?: string,
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: init.credentials ?? "same-origin",
+    headers: apiHeaders(init.headers, authKey),
+  });
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT));
+  }
+  return response;
+}
+
+export interface HealthResult {
+  ok: boolean;
+  ts?: number;
+  error?: string;
+  authRequired?: boolean;
+}
+
+export interface AuthSessionResult {
+  ok: boolean;
+  authenticated: boolean;
+  status?: number;
+  error?: string;
 }
 
 export interface TestResult {
@@ -45,12 +106,151 @@ export interface TestResult {
   error?: string;
 }
 
+export type MediaGenerateKind = "image" | "audio" | "video";
+
+export interface MediaInputFilePayload {
+  name: string;
+  type: string;
+  dataUrl: string;
+}
+
+export interface MediaGeneratePayload {
+  kind: MediaGenerateKind;
+  providerId: string;
+  presetId?: string;
+  spec: ProviderSpec;
+  model: string;
+  prompt: string;
+  voiceName?: string;
+  audioMode?: string;
+  voiceClone?: MediaInputFilePayload;
+  lipSync?: {
+    audio?: MediaInputFilePayload;
+    text?: string;
+  };
+}
+
+export interface MediaGenerateResult {
+  kind: MediaGenerateKind;
+  url: string;
+  filename: string;
+  mimeType: string;
+  createdAt: number;
+  providerId: string;
+  model: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeBackendUnauthorized<T extends { ok?: boolean; error?: string }>(
+  response: Response,
+  data: T,
+): T {
+  if (response.status !== 401) return data;
+  const record: Record<string, unknown> = isRecord(data) ? data : {};
+  const code = record.code;
+  const error = record.error;
+  const isBackendAuth =
+    code === "BACKEND_UNAUTHORIZED" ||
+    error === "unauthorized" ||
+    (typeof error === "string" && /x-nexus-auth|NEXUS_AUTH_KEY|APP_AUTH_KEY/i.test(error));
+  if (!isBackendAuth) return data;
+  return {
+    ...data,
+    ok: false,
+    error:
+      "Backend nao autorizado. A Master API Key do app precisa bater com NEXUS_AUTH_KEY/APP_AUTH_KEY do servidor.",
+  };
+}
+
 export const api = {
-  async health(): Promise<{ ok: boolean; ts?: number; error?: string }> {
+  async health(): Promise<HealthResult> {
     try {
       const r = await apiFetch(`${API_BASE}/api/health`, { method: "GET" });
       if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
       return await r.json();
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  },
+
+  async authSession(authKey?: string): Promise<AuthSessionResult> {
+    try {
+      const r = await apiFetch(
+        `${API_BASE}/api/auth/session`,
+        { method: "GET" },
+        authKey?.trim() || undefined,
+      );
+      const data = await r.json().catch(() => null) as
+        | { ok?: boolean; authenticated?: boolean; error?: string }
+        | null;
+      if (!r.ok) {
+        return {
+          ok: false,
+          authenticated: false,
+          status: r.status,
+          error: data?.error ?? `HTTP ${r.status}`,
+        };
+      }
+      return {
+        ok: Boolean(data?.ok ?? true),
+        authenticated: Boolean(data?.authenticated ?? true),
+        status: r.status,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        authenticated: false,
+        error: (err as Error).message,
+      };
+    }
+  },
+
+  async authLogin(key: string): Promise<AuthSessionResult> {
+    try {
+      const r = await apiFetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const data = await r.json().catch(() => null) as
+        | { ok?: boolean; authenticated?: boolean; error?: string }
+        | null;
+      if (!r.ok) {
+        return {
+          ok: false,
+          authenticated: false,
+          status: r.status,
+          error: data?.error ?? `HTTP ${r.status}`,
+        };
+      }
+      return {
+        ok: Boolean(data?.ok ?? true),
+        authenticated: Boolean(data?.authenticated ?? true),
+        status: r.status,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        authenticated: false,
+        error: (err as Error).message,
+      };
+    }
+  },
+
+  async authLogout(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const r = await apiFetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      const data = await r.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!r.ok || data?.ok === false) {
+        return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
+      }
+      return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
@@ -116,7 +316,8 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spec }),
     });
-    return r.json();
+    const data = (await r.json()) as TestResult;
+    return normalizeBackendUnauthorized(r, data);
   },
 
   async fetchModels(spec: ProviderSpec): Promise<Array<{ id: string; name?: string }>> {
@@ -125,8 +326,30 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spec }),
     });
-    const data = await r.json();
+    const data = normalizeBackendUnauthorized(
+      r,
+      (await r.json()) as { ok?: boolean; models?: Array<{ id: string; name?: string }>; error?: string },
+    );
+    if (!r.ok || data.ok === false) {
+      throw new Error(data.error ?? `HTTP ${r.status}`);
+    }
     return data.models ?? [];
+  },
+
+  async generateMedia(payload: MediaGeneratePayload): Promise<MediaGenerateResult> {
+    const r = await apiFetch(`${API_BASE}/api/media/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = normalizeBackendUnauthorized(
+      r,
+      (await r.json()) as { ok?: boolean; data?: MediaGenerateResult; error?: string },
+    );
+    if (!r.ok || data.ok === false || !data.data) {
+      throw new Error(data.error ?? `HTTP ${r.status}`);
+    }
+    return data.data;
   },
 
   async searchKnowledge(payload: {

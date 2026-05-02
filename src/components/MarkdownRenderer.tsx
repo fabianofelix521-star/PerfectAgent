@@ -46,7 +46,9 @@ export function AIMessageRenderer({
       </h3>
     ),
     p: ({ children }) => (
-      <p className="my-2 first:mt-0 last:mb-0">{children}</p>
+      <p className="my-2 min-w-0 break-words first:mt-0 last:mb-0 [overflow-wrap:anywhere]">
+        {children}
+      </p>
     ),
     ul: ({ children }) => (
       <ul className="my-2 list-disc space-y-1 pl-5 marker:text-slate-400">
@@ -58,9 +60,9 @@ export function AIMessageRenderer({
         {children}
       </ol>
     ),
-    li: ({ children }) => <li className="pl-1">{children}</li>,
+    li: ({ children }) => <li className="min-w-0 break-words pl-1 [overflow-wrap:anywhere]">{children}</li>,
     blockquote: ({ children }) => (
-      <blockquote className="my-3 border-l-4 border-indigo-200 bg-indigo-50/60 px-3 py-2 text-slate-700">
+      <blockquote className="my-3 min-w-0 break-words border-l-4 border-indigo-200 bg-indigo-50/60 px-3 py-2 text-slate-700 [overflow-wrap:anywhere]">
         {children}
       </blockquote>
     ),
@@ -69,25 +71,25 @@ export function AIMessageRenderer({
         {...props}
         target="_blank"
         rel="noreferrer noopener"
-        className="font-semibold text-indigo-600 underline-offset-2 hover:underline"
+        className="break-words font-semibold text-indigo-600 underline-offset-2 hover:underline [overflow-wrap:anywhere]"
       >
         {children}
       </a>
     ),
     table: ({ children }) => (
-      <div className="my-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full border-collapse text-left text-xs">
           {children}
         </table>
       </div>
     ),
     th: ({ children }) => (
-      <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-700">
+      <th className="break-words border-b border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-700 [overflow-wrap:anywhere]">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">
+      <td className="break-words border-b border-slate-100 px-3 py-2 align-top text-slate-700 [overflow-wrap:anywhere]">
         {children}
       </td>
     ),
@@ -112,7 +114,7 @@ export function AIMessageRenderer({
       return (
         <code
           className={cn(
-            "rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[0.86em] font-semibold text-slate-800",
+            "rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[0.86em] font-semibold text-slate-800 break-words [overflow-wrap:anywhere]",
             codeClassName,
           )}
           {...props}
@@ -129,7 +131,7 @@ export function AIMessageRenderer({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className={cn(
-        "ai-message-renderer max-w-none wrap-break-word text-slate-800",
+        "ai-message-renderer min-w-0 max-w-full break-words text-slate-800 [overflow-wrap:anywhere]",
         compact ? "text-[13px] leading-5" : "text-sm leading-6 sm:text-[15px]",
         className,
       )}
@@ -199,7 +201,7 @@ export function CodeBlockRenderer({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      className="not-prose my-3 overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.22)]"
+      className="not-prose my-3 max-w-full overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.22)]"
     >
       <button
         type="button"
@@ -274,7 +276,7 @@ export function CodeBlockRenderer({
             {code}
           </syntax.Renderer>
         ) : (
-          <pre className="max-h-[420px] overflow-auto bg-[#020617] p-4 text-xs leading-5 text-slate-100">
+          <pre className="max-h-[420px] max-w-full overflow-auto bg-[#020617] p-4 text-xs leading-5 text-slate-100">
             <code>{code}</code>
           </pre>
         )

@@ -3,6 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/services/webcontainer", () => ({
   webContainerService: {
     isSupported: () => false,
+    getSupportStatus: vi.fn(() => ({
+      supported: false,
+      hasWindow: true,
+      hasSharedArrayBuffer: false,
+      crossOriginIsolated: false,
+      inIframe: false,
+      host: "localhost:5173",
+    })),
+    formatUnsupportedMessage: vi.fn(
+      () =>
+        "WebContainer indisponivel: o preview real precisa de cross-origin isolation no navegador.",
+    ),
     boot: vi.fn(async () => ({ ok: false, error: "unsupported" })),
     onLog: vi.fn(() => () => {}),
     onPreviewError: vi.fn(() => () => {}),
@@ -29,6 +41,8 @@ vi.mock("@/services/api", () => ({
 
 import { previewManager } from "@/services/previewManager";
 import { extractProjectFiles } from "@/services/boltArtifact";
+import { runAgentLoop } from "@/services/agentLoop";
+import { ModelRouter } from "@/core/ai/routing/ModelRouter";
 import { ensurePresetsRegistered, useConfig } from "@/stores/config";
 
 const TEST_SPECS = [
@@ -64,6 +78,7 @@ const TEST_SPECS = [
 describe("Code Studio test battery", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
     previewManager.reset();
     useConfig.setState({
       projects: [],
@@ -92,18 +107,27 @@ describe("Code Studio test battery", () => {
     expect(result.files.length).toBe(1);
   });
 
-  it("preview manager tracks static preview timing", () => {
+  it("preview manager keeps preview empty while the real WebContainer is booting", () => {
     previewManager.startCycle("test-project");
     expect(previewManager.getState().status).toBe("preparing");
 
-    const srcDoc = "<!doctype html><html><body><h1>Test</h1></body></html>";
-    previewManager.setStatic(srcDoc);
+    previewManager.setBooting("Running npm install...");
     const state = previewManager.getState();
-    expect(state.status).toBe("running");
-    expect(state.mode).toBe("static-iframe");
-    expect(state.staticSrcDoc).toBe(srcDoc);
-    expect(state.timeToStaticMs).toBeDefined();
-    expect(state.timeToStaticMs!).toBeLessThan(5000);
+    expect(state.status).toBe("booting");
+    expect(state.mode).toBe("none");
+    expect(state.url).toBeUndefined();
+    expect(state.liveUrl).toBeUndefined();
+  });
+
+  it("does not create a static fallback for Vite projects", () => {
+    previewManager.startCycle("vite-project");
+    previewManager.setBooting("Running npm run dev...");
+    const state = previewManager.getState();
+
+    expect(state.status).toBe("booting");
+    expect(state.mode).toBe("none");
+    expect(state.url).toBeUndefined();
+    expect(state.liveUrl).toBeUndefined();
   });
 
   it("preview manager tracks live preview timing", () => {
@@ -114,6 +138,36 @@ describe("Code Studio test battery", () => {
     expect(state.mode).toBe("webcontainer");
     expect(state.liveUrl).toBe("http://localhost:5173");
     expect(state.timeToLiveMs).toBeDefined();
+  });
+
+  it("runAgentLoop preserves the selected provider model in Code Studio", async () => {
+    const { api } = await import("@/services/api");
+    const streamChat = vi.mocked(api.streamChat);
+    streamChat.mockImplementationOnce(({ model, onToken, onDone }) => {
+      expect(model).toBe("deepseek-chat");
+      onToken(`<boltArtifact id="test" title="App"><boltAction type="file" filePath="src/App.tsx">export default function App(){return <main>ok</main>;}</boltAction></boltArtifact>`);
+      onDone();
+      return () => {};
+    });
+    const routeSpy = vi
+      .spyOn(ModelRouter.prototype, "route")
+      .mockResolvedValue({ model: "gpt-4o", reason: "default_best" });
+
+    const result = await runAgentLoop({
+      request: "Create a React app",
+      spec: { shape: "openai", baseUrl: "https://api.deepseek.com/v1", apiKey: "test" },
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      onEvent: () => {},
+      onFiles: () => {},
+    });
+
+    expect(routeSpy).not.toHaveBeenCalled();
+    expect(streamChat).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "deepseek-chat" }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("WebContainer");
   });
 
   for (const spec of TEST_SPECS) {

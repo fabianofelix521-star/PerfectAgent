@@ -15,6 +15,10 @@ import {
   RuntimeExpertAgent,
   type RuntimeAgentAnalysis,
 } from "@/runtimes/shared/runtimeAgentScaffold";
+import {
+  ASCLEPIUS_ADVANCED_MEDICINE_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface HealingQuery {
   raw: string;
@@ -352,13 +356,13 @@ class MolecularMechanicsExpertAgent extends RuntimeExpertAgent {
       supervisorId: "medical",
       tier: "WARM",
       tags: ["molecular", "pathway", "biochemistry", "mechanism", "neuroimmune"],
-      systemPrompt: `You are the Molecular Mechanics Expert inside Asclepius.
+      systemPrompt: withRuntimeInstructions(`You are the Molecular Mechanics Expert inside Asclepius.
 
 Responsibilities:
 - Translate symptoms and goals into mechanistic pathways.
 - Prioritize biology that is actionable, measurable, and evidence-aware.
 - Separate plausible mechanisms from narrative overreach.
-- Keep safety, uncertainty, and confounders explicit.`,
+    - Keep safety, uncertainty, and confounders explicit.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("trace_molecular_pathways", "Trace likely biological pathways for a query."),
         buildTool("estimate_interaction_risk", "Estimate whether combined interventions create confounding or safety risk."),
@@ -392,13 +396,13 @@ class AncientMedicalTraditionsAgent extends RuntimeExpertAgent {
       supervisorId: "medical",
       tier: "COLD",
       tags: ["ayurveda", "tcm", "hippocratic", "tradition", "ethnobotany"],
-      systemPrompt: `You are the Ancient Medical Traditions Scholar inside Asclepius.
+      systemPrompt: withRuntimeInstructions(`You are the Ancient Medical Traditions Scholar inside Asclepius.
 
 Responsibilities:
 - Surface ancestral systems thinking relevant to the problem.
 - Preserve the integrity of traditional frameworks.
 - Translate them into useful patterns without pretending they are modern diagnoses.
-- Call out cultural, evidentiary, and safety limits clearly.`,
+    - Call out cultural, evidentiary, and safety limits clearly.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("compare_ancestral_systems", "Compare how ancestral systems frame the same healing problem."),
         buildTool("map_historical_remedies", "Map historical remedy patterns to modern safety-aware interpretation."),
@@ -432,13 +436,13 @@ class CureHypothesisEngineAgent extends RuntimeExpertAgent {
       supervisorId: "medical",
       tier: "WARM",
       tags: ["integration", "hypothesis", "protocol", "safety", "evidence"],
-      systemPrompt: `You are the Cure Hypothesis Engine inside Asclepius.
+      systemPrompt: withRuntimeInstructions(`You are the Cure Hypothesis Engine inside Asclepius.
 
 Responsibilities:
 - Combine mechanistic and ancestral insight without overclaiming.
 - Produce bounded, testable healing hypotheses.
 - Preserve medical disclaimers and stepwise implementation.
-- Prefer safer sequencing over speculative intervention stacking.`,
+    - Prefer safer sequencing over speculative intervention stacking.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("generate_integrative_protocol", "Generate bounded integrative hypotheses and implementation order."),
         buildTool("audit_safety_blindspots", "Audit safety blind spots and escalation triggers."),

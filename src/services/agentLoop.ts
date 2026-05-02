@@ -43,6 +43,7 @@ export interface AgentEvent {
 export interface AgentLoopParams {
   request: string;
   spec: ProviderSpec;
+  providerId?: string;
   model: string;
   systemContext?: string;
   maxIterations?: number;
@@ -67,6 +68,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
   const {
     request,
     spec,
+    providerId,
     model,
     systemContext,
     maxIterations = MAX_SELF_HEAL,
@@ -80,6 +82,10 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
   let iteration = 0;
   let allFiles: ProjectFile[] = [];
   const modelRouter = new ModelRouter();
+  const appendTerminalChunk = (chunk: string) => {
+    const lines = chunk.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    for (const line of lines) previewManager.appendLog(line);
+  };
 
   try {
     /* ---- Phase 1: Stream AI response ---- */
@@ -90,11 +96,10 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
       systemContext,
     ].filter(Boolean).join("\n\n---\n\n");
 
-    let raw = "";
     const cfgState = useConfig.getState();
     const routerSettings = cfgState.settings?.modelRouter;
-    const routerEnabled = Boolean(routerSettings?.enabled);
-    const routedModel = routerEnabled
+    const shouldAutoRouteModel = Boolean(routerSettings?.enabled) && !providerId;
+    const routedModel = shouldAutoRouteModel
       ? (await modelRouter.route({
           messages: [
             {
@@ -110,33 +115,66 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
         })).model
       : model;
 
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const stop = api.streamChat({
-        spec,
-        model: routedModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: request },
-        ],
-        onToken: (delta) => {
-          raw += delta;
-          onToken?.(delta);
-        },
-        onDone: () => { if (!settled) { settled = true; resolve(); } },
-        onError: (err) => { if (!settled) { settled = true; reject(new Error(err)); } },
+    const streamResponse = async (
+      userContent: string,
+      extraSystem?: string,
+    ): Promise<string> => {
+      let raw = "";
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const stop = api.streamChat({
+          spec,
+          model: routedModel,
+          messages: [
+            {
+              role: "system",
+              content: [systemPrompt, extraSystem]
+                .filter(Boolean)
+                .join("\n\n---\n\n"),
+            },
+            { role: "user", content: userContent },
+          ],
+          onToken: (delta) => {
+            raw += delta;
+            onToken?.(delta);
+          },
+          onDone: () => { if (!settled) { settled = true; resolve(); } },
+          onError: (err) => { if (!settled) { settled = true; reject(new Error(err)); } },
+        });
+        signal?.addEventListener("abort", () => {
+          stop();
+          if (!settled) { settled = true; reject(new Error("aborted")); }
+        }, { once: true });
       });
-      signal?.addEventListener("abort", () => {
-        stop();
-        if (!settled) { settled = true; reject(new Error("aborted")); }
-      }, { once: true });
-    });
+      return raw;
+    };
+
+    let raw = await streamResponse(request);
 
     if (signal?.aborted) throw new Error("aborted");
 
     /* ---- Phase 2: Parse artifacts ---- */
     emit({ phase: "parsing", message: "Parsing generated code...", level: "info" });
-    const { files, method } = extractProjectFiles(raw);
+    let { files, method } = extractProjectFiles(raw);
+
+    if (files.length === 0 && !signal?.aborted) {
+      emit({
+        phase: "parsing",
+        message: "No artifact found. Retrying with strict Code Studio format...",
+        level: "warn",
+      });
+      raw = await streamResponse(
+        [
+          request,
+          "",
+          "Your previous response did not include files. Reply again with ONLY a <boltArtifact> containing the complete runnable project files. Do not ask clarification questions.",
+        ].join("\n"),
+        "CRITICAL: Code Studio cannot use prose here. You must output <boltArtifact> and <boltAction type=\"file\"> elements with complete file contents.",
+      );
+      const retry = extractProjectFiles(raw);
+      files = retry.files;
+      method = retry.method;
+    }
 
     if (files.length === 0) {
       emit({ phase: "failed", message: "No files generated", level: "error" });
@@ -154,17 +192,22 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
 
     /* ---- Phase 3: Boot WebContainer + mount ---- */
     if (!webContainerService.isSupported()) {
-      emit({ phase: "complete", message: "Files generated (WebContainer unavailable)", level: "warn" });
-      return { ok: true, files, iterations: 0, method };
+      const message = webContainerService.formatUnsupportedMessage();
+      emit({ phase: "failed", message, level: "error" });
+      previewManager.setError(message);
+      return { ok: false, files, iterations: 0, method, error: message };
     }
 
     emit({ phase: "writing-files", message: "Booting WebContainer...", level: "info" });
+    previewManager.setBooting("Booting WebContainer...");
     const boot = await webContainerService.boot();
     if (!boot.ok) {
       emit({ phase: "failed", message: boot.error ?? "WebContainer boot failed", level: "error" });
+      previewManager.setError(boot.error ?? "WebContainer boot failed");
       return { ok: false, files, iterations: 0, method, error: boot.error };
     }
 
+    previewManager.setBooting("Mounting project files...");
     const tree = filesToWebContainerTree(files);
     await webContainerService.mount(tree);
     emit({ phase: "writing-files", message: "Files mounted", level: "success" });
@@ -173,6 +216,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
     let logs: string[] = [];
     const offLog = webContainerService.onLog((c) => {
       logs.push(c);
+      appendTerminalChunk(c);
       if (logs.length > 400) logs = logs.slice(-200);
     });
 
@@ -183,13 +227,15 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
 
         // Install deps
         emit({ phase: "installing", message: "Installing dependencies...", level: "info", iteration });
-        const pkgFile = files.find((f) => f.path === "package.json");
+        previewManager.setBooting("Running npm install...");
+        const pkgFile = allFiles.find((f) => f.path === "package.json");
         const installResult = await webContainerService.installDeps(pkgFile?.content);
 
         if (!installResult.success) {
           emit({ phase: "debugging", message: "Install failed, auto-fixing...", level: "warn", iteration });
-          allFiles = await autoFixFile(files, "package.json", logs, spec, routedModel, signal);
+          allFiles = await autoFixFile(allFiles, "package.json", logs, spec, routedModel, signal);
           onFiles(allFiles);
+          await webContainerService.mount(filesToWebContainerTree(allFiles));
           continue;
         }
 
@@ -197,6 +243,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
 
         // Start dev server
         emit({ phase: "starting-server", message: "Starting dev server...", level: "info", iteration });
+        previewManager.setBooting("Running npm run dev...");
         try {
           const server = await webContainerService.startDevServer("dev");
           previewManager.setLive(server.url, server.port);
@@ -210,11 +257,13 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
           const culprit = identifyCulpritFile(logs, allFiles);
           allFiles = await autoFixFile(allFiles, culprit, logs, spec, routedModel, signal);
           onFiles(allFiles);
+          await webContainerService.mount(filesToWebContainerTree(allFiles));
         }
       }
 
       emit({ phase: "failed", message: `Max iterations (${maxIterations}) reached`, level: "error" });
       offLog();
+      previewManager.setError("Max self-heal iterations reached");
       return { ok: false, files: allFiles, iterations: iteration, method, error: "Max self-heal iterations reached" };
     } finally {
       offLog();
@@ -225,6 +274,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
       emit({ phase: "failed", message: "Cancelled by user", level: "warn" });
     } else {
       emit({ phase: "failed", message: msg, level: "error" });
+      previewManager.setError(msg);
     }
     return { ok: false, files: allFiles, iterations: iteration, method: "none", error: msg };
   }

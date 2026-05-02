@@ -36,6 +36,17 @@ const COGNITIVE_RUNTIME_KINDS = new Set([
   "logos",
   "prometheus-mind",
   "nexus-prime",
+  "hippocrates-supreme",
+  "mendeleev",
+  "prompt-forge",
+  "silicon-valley",
+  "unreal-forge",
+  "aegis",
+  "content-empire",
+  "ad-commander",
+  "studio-one",
+  "wall-street",
+  "pixel-forge",
 ]);
 
 export interface AdapterContext {
@@ -48,6 +59,7 @@ export interface AdapterContext {
 export interface CodeGenParams {
   request: string;
   spec: ProviderSpec;
+  providerId?: string;
   model: string;
   systemContext?: string;
   maxIterations?: number;
@@ -133,6 +145,7 @@ function defaultGenerateProject(
   return runAgentLoop({
     request: params.request,
     spec: params.spec,
+    providerId: params.providerId,
     model: params.model,
     systemContext: params.systemContext,
     maxIterations: params.maxIterations,

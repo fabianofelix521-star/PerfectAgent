@@ -10,6 +10,12 @@ import {
   uniqueMerge,
   weightedMean,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  PROMETHEUS_ON_CHAIN_FORENSICS_RULE,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export type PrometheusTier = "HOT" | "WARM" | "COLD";
 
@@ -106,6 +112,7 @@ export interface PrometheusRuntimeState {
 export interface PrometheusAgent {
   id: string;
   domain: string;
+  systemPrompt: string;
   worldModel: WorldModel;
   tier: PrometheusTier;
   cognitiveCycle(): Promise<void>;
@@ -124,6 +131,7 @@ const TIER_HORIZON: Record<PrometheusTier, number> = {
 
 abstract class BasePrometheusAgent implements PrometheusAgent {
   worldModel: WorldModel;
+  readonly systemPrompt: string;
   private lastDelta: ProbabilisticBelief[] = [];
   private readonly memory: PersistentCognitiveMemory<SerializedWorldModel>;
 
@@ -132,7 +140,14 @@ abstract class BasePrometheusAgent implements PrometheusAgent {
     public readonly domain: string,
     public readonly tier: PrometheusTier,
     trackRecord = 0.62,
+    extraPrompt?: string,
   ) {
+    this.systemPrompt = withRuntimeInstructions(
+      `Prometheus ${domain} agent. Analyze crypto, DeFi and market signals with explicit evidence, risk controls and track-record-aware probability updates.`,
+      GLOBAL_CITATION_RULE,
+      CONFIDENCE_CALIBRATION_RULE,
+      extraPrompt,
+    );
     this.memory = new PersistentCognitiveMemory(
       `runtime:prometheus:agent:${id}`,
       () => this.serializeWorldModel(this.createWorldModel(trackRecord)),
@@ -422,10 +437,32 @@ export class MEVHunterAgent extends BasePrometheusAgent {
 
 export class TokenomicsAnalystAgent extends BasePrometheusAgent {
   constructor() {
-    super("tokenomics-analyst", "tokenomics", "WARM", 0.68);
+    super("tokenomics-analyst", "tokenomics", "WARM", 0.68, PROMETHEUS_ON_CHAIN_FORENSICS_RULE);
   }
 
   protected extractBeliefs(data: PrometheusPerception): ProbabilisticBelief[] {
+    if (data.kind === "onchain") {
+      const concentrationPressure = clamp01(
+        (data.whaleTransfers ?? 0) / 20 +
+          Math.abs(data.liquidityDeltaPct ?? 0) / 100 +
+          (data.token ? 0.18 : 0),
+      );
+      return [
+        this.belief(
+          `${data.token ?? data.chain} exige forensic tokenomics antes de entrada`,
+          Math.max(concentrationPressure, 0.58),
+          -concentrationPressure,
+          [
+            `chain=${data.chain}`,
+            `cluster-analysis=required`,
+            `lock-verification=required`,
+            `contract-admin-audit=required`,
+            `concentration-effective-vs-gross=required`,
+          ],
+          1000 * 60 * 60 * 6,
+        ),
+      ];
+    }
     if (data.kind !== "market") return [];
     const sellPressure = clamp01(Math.max(0, data.volumeChangePct) / 180 + Math.max(0, -data.priceChangePct) / 40);
     return [

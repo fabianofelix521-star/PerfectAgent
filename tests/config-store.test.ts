@@ -5,6 +5,8 @@ import {
   getDefaultModel,
   hasValidAPIKey,
 } from "@/stores/config";
+import { resolveRuntimeLlmConfig } from "@/services/configSelectors";
+import { resolveModelId, resolveProviderId } from "@/services/configSelectors";
 import { presetById } from "@/services/providers";
 import type { AgentRuntime, ProviderConfig } from "@/types";
 
@@ -96,7 +98,10 @@ describe("defaultCapabilitiesFor \u2014 covers every RuntimeKind including cogni
     "langgraph-dag", "langgraph", "crewai", "autogen", "llamaindex",
     "webcontainer", "omega-cognition", "morpheus-pantheon",
     "prometheus", "morpheus-creative", "apollo", "hermes", "athena",
-    "vulcan", "oracle", "nexus-prime", "stigmergy-nexus",
+    "vulcan", "oracle", "nexus-prime", "hippocrates-supreme", "mendeleev",
+    "prompt-forge", "silicon-valley", "unreal-forge", "aegis",
+    "content-empire", "ad-commander", "studio-one", "wall-street",
+    "pixel-forge", "stigmergy-nexus",
     "ephemeral-genesis", "supreme-coordinator", "custom", "generic",
   ] as const;
   for (const k of kinds) {
@@ -187,5 +192,64 @@ describe("config helper selectors", () => {
       },
     } as never);
     expect(getDefaultModel("openai")?.id).toBe("gpt-4o-mini");
+  });
+
+  it("runtime LLM resolution follows Code Studio selection instead of global defaults", () => {
+    useConfig.getState().upsertProvider(baseProvider());
+    useConfig.getState().upsertProvider(baseProvider({
+      id: "deepseek",
+      presetId: "deepseek",
+      name: "DeepSeek",
+      spec: { shape: "openai", baseUrl: "https://api.deepseek.com/v1", authMode: "bearer", apiKey: "sk-deepseek" },
+      defaultModel: "deepseek-chat",
+      fetchedModels: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
+    }));
+    useConfig.setState({
+      settings: {
+        ...useConfig.getState().settings,
+        defaultProviderId: "openai",
+        defaultModelId: "gpt-4o",
+      },
+    } as never);
+
+    const resolved = resolveRuntimeLlmConfig(
+      { llmProviderId: undefined, llmModel: undefined },
+      {
+        providers: useConfig.getState().providers,
+        models: useConfig.getState().models,
+        selectionProviderId: "deepseek",
+        selectionModel: "deepseek-chat",
+      },
+    );
+
+    expect(resolved).toEqual({ providerId: "deepseek", modelId: "deepseek-chat" });
+  });
+
+  it("strict surface resolution does not silently fall back to another provider or model", () => {
+    useConfig.getState().upsertProvider(baseProvider());
+    useConfig.getState().upsertProvider(baseProvider({
+      id: "deepseek",
+      presetId: "deepseek",
+      name: "DeepSeek",
+      spec: { shape: "openai", baseUrl: "https://api.deepseek.com/v1", authMode: "bearer", apiKey: "sk-deepseek" },
+      defaultModel: "deepseek-chat",
+      fetchedModels: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
+    }));
+
+    expect(
+      resolveProviderId("missing-provider", undefined, useConfig.getState().providers, {
+        fallbackToFirst: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveModelId(
+        "gpt-4o",
+        undefined,
+        "deepseek",
+        useConfig.getState().providers,
+        useConfig.getState().models,
+        { fallbackToFirst: false },
+      ),
+    ).toBeUndefined();
   });
 });

@@ -6,6 +6,10 @@ import {
   RuntimeExpertAgent,
   type RuntimeAgentAnalysis,
 } from "@/runtimes/shared/runtimeAgentScaffold";
+import {
+  PROMETHEUS_MIND_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface CognitiveBrief {
   raw: string;
@@ -151,13 +155,13 @@ export class NeuroscienceExpertAgent extends RuntimeExpertAgent {
       supervisorId: "science",
       tier: "WARM",
       tags: ["neuroscience", "brain", "attention", "plasticity", "cognition"],
-      systemPrompt: `You are the Neuroscience Expert inside Prometheus-Mind.
+      systemPrompt: withRuntimeInstructions(`You are the Neuroscience Expert inside Prometheus-Mind.
 
 Responsibilities:
 - Map the user's cognitive issue to plausible neural mechanisms.
 - Keep the explanation measurable and intervention-oriented.
 - Separate mechanism, proxy, and speculation.
-- Preserve uncertainty for any medical or psychiatric inference.`,
+    - Preserve uncertainty for any medical or psychiatric inference.`, PROMETHEUS_MIND_RULES),
       tools: [
         buildTool("analyze_brain_networks", "Analyze the dominant neural networks implicated by a prompt."),
         buildTool("predict_plasticity_levers", "Predict the most relevant neuroplasticity levers to test first."),
@@ -191,13 +195,13 @@ class CognitivePerformanceStrategistAgent extends RuntimeExpertAgent {
       supervisorId: "science",
       tier: "WARM",
       tags: ["performance", "focus", "sleep", "recovery", "habits"],
-      systemPrompt: `You are the Cognitive Performance Strategist inside Prometheus-Mind.
+      systemPrompt: withRuntimeInstructions(`You are the Cognitive Performance Strategist inside Prometheus-Mind.
 
 Responsibilities:
 - Convert brain-level analysis into operational routines.
 - Keep the protocol small, testable, and measurable.
 - Prioritize recovery and environment design over stimulant-style magical thinking.
-- Track leading indicators over a defined horizon.`,
+    - Track leading indicators over a defined horizon.`, PROMETHEUS_MIND_RULES),
       tools: [
         buildTool("build_focus_protocol", "Build a stepwise cognitive performance protocol."),
         buildTool("optimize_recovery_stack", "Optimize recovery and anti-burnout foundations."),
@@ -232,13 +236,13 @@ class ConsciousnessModelingAgent extends RuntimeExpertAgent {
       supervisorId: "philosophy",
       tier: "COLD",
       tags: ["consciousness", "active-inference", "predictive-processing", "awareness"],
-      systemPrompt: `You are the Consciousness Modeling Agent inside Prometheus-Mind.
+      systemPrompt: withRuntimeInstructions(`You are the Consciousness Modeling Agent inside Prometheus-Mind.
 
 Responsibilities:
 - Offer a usable mind model for the task.
 - Keep it tied to measurement and behavior, not just theory.
 - Explain why attention and stress shape conscious access.
-- Avoid unsupported claims about altered states or miracle cognition.`,
+    - Avoid unsupported claims about altered states or miracle cognition.`, PROMETHEUS_MIND_RULES),
       tools: [
         buildTool("model_cognitive_loops", "Model the key cognitive loops in a performance problem."),
         buildTool("detect_cognitive_bottlenecks", "Detect bottlenecks in the awareness-action loop."),

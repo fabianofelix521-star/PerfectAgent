@@ -1,14 +1,11 @@
 /**
- * Dual-Track Preview Manager
+ * WebContainer Preview Manager
  *
- * Track 1 — INSTANT static preview (< 10s): srcdoc for HTML-only projects
- * Track 2 — LIVE runtime preview (≤ 60s): WebContainer dev server
- *
- * Single source of truth for the preview iframe state.
+ * Single source of truth for the live preview iframe state. Code Studio
+ * previews are served only from the WebContainer `server-ready` URL.
  */
 import type { ProjectFile } from "@/types";
 import { eventBus } from "@/services/eventBus";
-import { webContainerService } from "@/services/webcontainer";
 import type { FileSystemTree } from "@/services/webcontainer";
 
 export type PreviewStatus =
@@ -16,30 +13,23 @@ export type PreviewStatus =
   | "preparing"
   | "booting"
   | "running"
-  | "error"
-  | "fallback";
+  | "error";
 
 export type PreviewMode =
   | "none"
-  | "static-iframe"
-  | "webcontainer"
-  | "fallback";
+  | "webcontainer";
 
 export interface PreviewState {
   status: PreviewStatus;
   mode: PreviewMode;
-  /** Object URL or live URL for the iframe src */
+  /** Live WebContainer URL for the iframe src */
   url?: string;
-  /** Static srcdoc content */
-  staticSrcDoc?: string;
   /** Live WebContainer URL */
   liveUrl?: string;
   port?: number;
   /** Timing */
   startedAt: number;
-  staticAt?: number;
   liveAt?: number;
-  timeToStaticMs?: number;
   timeToLiveMs?: number;
   /** Logs & errors */
   logs: string[];
@@ -50,7 +40,6 @@ export interface PreviewState {
 
 type Listener = (state: PreviewState) => void;
 
-const LIVE_PREVIEW_TIMEOUT_MS = 60_000;
 const MAX_LOG_LINES = 200;
 
 function createIdle(): PreviewState {
@@ -67,8 +56,6 @@ function createIdle(): PreviewState {
 class PreviewManager {
   private state: PreviewState = createIdle();
   private listeners = new Set<Listener>();
-  private objectUrl: string | null = null;
-  private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   /* ---- public API ---- */
 
@@ -84,20 +71,15 @@ class PreviewManager {
 
   /** Start a new preview cycle (called when user sends a message). */
   startCycle(projectId?: string) {
-    this.clearTimeout();
-    this.revokeObjectUrl();
     const now = Date.now();
     this.patch({
       status: "preparing",
       mode: "none",
       url: undefined,
-      staticSrcDoc: undefined,
       liveUrl: undefined,
       port: undefined,
       startedAt: now,
-      staticAt: undefined,
       liveAt: undefined,
-      timeToStaticMs: undefined,
       timeToLiveMs: undefined,
       logs: ["Preparing preview..."],
       errors: [],
@@ -105,42 +87,12 @@ class PreviewManager {
       projectId,
     });
     eventBus.startRun(`run-${now.toString(36)}`);
-
-    // Hard timeout for live preview
-    this.timeoutHandle = setTimeout(() => {
-      if (this.state.mode !== "webcontainer") {
-        this.appendLog("Live preview timeout (60s). Static preview remains.");
-        eventBus.endRun("timeout", { reason: "live-preview-timeout" });
-      }
-    }, LIVE_PREVIEW_TIMEOUT_MS);
   }
 
-  /** Track 1: Set static preview immediately. */
-  setStatic(srcDoc: string, message?: string) {
-    if (!srcDoc) return;
-    const now = Date.now();
-    const url = this.createObjectUrl(srcDoc);
-    const timeToStaticMs = this.state.staticAt
-      ? undefined
-      : now - this.state.startedAt;
-    this.patch({
-      status: "running",
-      mode: "static-iframe",
-      url,
-      staticSrcDoc: srcDoc,
-      staticAt: this.state.staticAt ?? now,
-      timeToStaticMs: timeToStaticMs ?? this.state.timeToStaticMs,
-      message: message ?? "Static preview ready",
-      logs: [...this.state.logs, message ?? "Static preview ready"],
-    });
-    eventBus.emit("staticPreviewShown", { ms: timeToStaticMs });
-  }
-
-  /** Track 2: Set live WebContainer preview. */
+  /** Set live WebContainer preview from the `server-ready` event URL. */
   setLive(url: string, port?: number) {
     const now = Date.now();
     const timeToLiveMs = now - this.state.startedAt;
-    this.clearTimeout();
     this.patch({
       status: "running",
       mode: "webcontainer",
@@ -166,9 +118,12 @@ class PreviewManager {
   }
 
   setError(message: string) {
-    this.clearTimeout();
     this.patch({
       status: "error",
+      mode: "none",
+      url: undefined,
+      liveUrl: undefined,
+      port: undefined,
       message,
       errors: [...this.state.errors, message],
       logs: [...this.state.logs, `Error: ${message}`],
@@ -188,8 +143,6 @@ class PreviewManager {
   }
 
   reset() {
-    this.clearTimeout();
-    this.revokeObjectUrl();
     this.state = createIdle();
     this.notify();
   }
@@ -206,97 +159,9 @@ class PreviewManager {
       try { fn(this.state); } catch { /* isolate listener errors */ }
     }
   }
-
-  private createObjectUrl(srcDoc: string): string | undefined {
-    this.revokeObjectUrl();
-    if (typeof URL === "undefined" || typeof Blob === "undefined") return undefined;
-    this.objectUrl = URL.createObjectURL(new Blob([srcDoc], { type: "text/html" }));
-    return this.objectUrl;
-  }
-
-  private revokeObjectUrl() {
-    if (this.objectUrl && typeof URL !== "undefined") {
-      try { URL.revokeObjectURL(this.objectUrl); } catch { /* noop */ }
-    }
-    this.objectUrl = null;
-  }
-
-  private clearTimeout() {
-    if (this.timeoutHandle) clearTimeout(this.timeoutHandle);
-    this.timeoutHandle = null;
-  }
 }
 
 export const previewManager = new PreviewManager();
-
-/* ---- Static preview helpers ---- */
-
-/**
- * Try to flatten a project into a single HTML srcdoc.
- * Returns null if the project needs a runtime (Vite/React).
- */
-export function flattenProjectToSrcDoc(
-  files: ProjectFile[],
-  projectName = "Preview",
-): string | null {
-  if (!files.length) return null;
-  const html = files.find((f) => f.path === "index.html")
-    ?? files.find((f) => f.path.endsWith("/index.html"))
-    ?? files.find((f) => f.path.endsWith(".html"));
-  if (!html) return null;
-
-  // If it references a Vite entry script, it needs a runtime
-  const refsVite = /<script[^>]+src=["']\/?src\/main\.(tsx|jsx|ts|js)["']/i.test(html.content);
-  const hasBody = hasMeaningfulBody(html.content);
-  if (refsVite && !hasBody) return null;
-
-  return inlineAssets(html.content, files, projectName);
-}
-
-function hasMeaningfulBody(html: string): boolean {
-  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
-  const cleaned = body
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<div\s+id=["'](root|app)["']\s*><\/div>/gi, "")
-    .replace(/<!--([\s\S]*?)-->/g, "")
-    .replace(/\s+/g, "")
-    .trim();
-  return cleaned.length > 0;
-}
-
-function inlineAssets(html: string, files: ProjectFile[], projectName: string): string {
-  const styles = files
-    .filter((f) => f.path.endsWith(".css"))
-    .map((f) => `<style data-src="${esc(f.path)}">${f.content}</style>`)
-    .join("\n");
-  const scripts = files
-    .filter((f) => /\.(mjs|js)$/.test(f.path) && !f.path.endsWith(".min.js"))
-    .map((f) => `<script type="module" data-src="${esc(f.path)}">${f.content}<\/script>`)
-    .join("\n");
-
-  let doc = html;
-  if (!/<html[\s>]/i.test(doc))
-    doc = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(projectName)}</title></head><body>${doc}</body></html>`;
-  doc = doc.replace(/<\/head>/i, `${styles}\n</head>`);
-  doc = doc.replace(/<\/body>/i, `${scripts}\n</body>`);
-  return doc;
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-/** Build a fallback static HTML for when no index.html exists. */
-export function filesToStaticFallbackHtml(files: ProjectFile[], projectName: string): string {
-  const list = files.map((f) => `<li>${esc(f.path)}</li>`).join("");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(projectName)}</title><style>body{margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:32px}main{max-width:760px;margin:auto}.badge{display:inline-block;border:1px solid #334155;border-radius:999px;padding:6px 10px;color:#93c5fd;font-size:12px}</style></head><body><main><span class="badge">Static preview</span><h1>${esc(projectName)}</h1><p>Runtime preview is booting. Files mounted:</p><ul>${list}</ul></main></body></html>`;
-}
-
-/** Pre-warm WebContainer on page mount. */
-export async function prewarmWebContainer(): Promise<void> {
-  if (!webContainerService.isSupported()) return;
-  webContainerService.boot().catch(() => { /* opportunistic */ });
-}
 
 /** Convert ProjectFile[] to WebContainer FileSystemTree. */
 export function filesToWebContainerTree(files: ProjectFile[]): FileSystemTree {

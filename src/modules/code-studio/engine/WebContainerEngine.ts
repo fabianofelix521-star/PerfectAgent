@@ -161,22 +161,24 @@ class WebContainerEngineImpl {
     const id = `${options.command}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     this.activeProcesses.set(id, proc);
 
-    proc.output
-      .pipeTo(
-        new WritableStream<string>({
-          write: (data) => {
-            const output: ProcessOutput = {
-              type: "stdout",
-              data,
-              timestamp: Date.now(),
-            };
-            this.emit("onProcessOutput", output);
-          },
-        }),
-      )
-      .catch(() => {
-        // stream closed
-      });
+    if (options.pipeOutput !== false) {
+      proc.output
+        .pipeTo(
+          new WritableStream<string>({
+            write: (data) => {
+              const output: ProcessOutput = {
+                type: "stdout",
+                data,
+                timestamp: Date.now(),
+              };
+              this.emit("onProcessOutput", output);
+            },
+          }),
+        )
+        .catch(() => {
+          // stream closed
+        });
+    }
 
     const exitCode = proc.exit.then((code) => {
       this.activeProcesses.delete(id);
@@ -200,26 +202,33 @@ class WebContainerEngineImpl {
     this.serverProcess = proc;
 
     return new Promise((resolve, reject) => {
-      const off = this.on({
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let off = () => {};
+      const cleanup = () => {
+        off();
+        if (timer) clearTimeout(timer);
+        timer = null;
+      };
+      off = this.on({
         onServerReady: (url) => {
-          off();
+          cleanup();
           resolve(url);
         },
         onError: (err) => {
-          off();
+          cleanup();
           reject(err);
         },
       });
 
       // Safety timeout
-      const timer = setTimeout(() => {
-        off();
+      timer = setTimeout(() => {
+        cleanup();
         reject(new Error("Dev server failed to become ready within 60s."));
       }, 60_000);
 
       proc.exit.then((code) => {
-        clearTimeout(timer);
         if (code !== 0) {
+          cleanup();
           reject(new Error(`Dev server exited with code ${code}.`));
         }
       });

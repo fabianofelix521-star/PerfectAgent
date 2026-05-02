@@ -3,6 +3,7 @@ import { memo, useMemo } from "react";
 import { Code2 } from "lucide-react";
 import type { ChatMessageV2 } from "@/types";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { MessageActionBar } from "@/components/MessageActionBar";
 import { StreamingText } from "@/components/AIStreamingRenderer";
 import { ThinkingPanel } from "@/components/ThinkingPanel";
 import { normalizeAssistantOutput } from "@/services/normalize";
@@ -76,7 +77,7 @@ export const ChatBubble = memo(function ChatBubble({
   const bubble = (
     <div
       className={cn(
-        "rounded-[20px] shadow-[0_10px_30px_rgba(103,115,160,0.10)]",
+        "min-w-0 max-w-full overflow-hidden rounded-[20px] break-words shadow-[0_10px_30px_rgba(103,115,160,0.10)] [overflow-wrap:anywhere]",
         compact ? "px-3.5 py-2.5 text-sm" : "px-4.5 py-3 text-sm sm:text-base",
         isUser
           ? "rounded-br-sm bg-[#17172d] text-white"
@@ -84,7 +85,7 @@ export const ChatBubble = memo(function ChatBubble({
       )}
     >
       {isUser ? (
-        <div className="whitespace-pre-wrap">
+        <div className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
           {message.content || (message.streaming ? "..." : "")}
         </div>
       ) : (
@@ -117,7 +118,7 @@ export const ChatBubble = memo(function ChatBubble({
               <StreamingText
                 text={streamingText}
                 isStreaming
-                className="whitespace-pre-wrap text-[13px] leading-5 text-slate-700"
+                className="min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 text-slate-700 [overflow-wrap:anywhere]"
               />
               {codeBlockCount > 0 ? (
                 <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
@@ -147,6 +148,12 @@ export const ChatBubble = memo(function ChatBubble({
               ))}
             </div>
           ) : null}
+          {!isAssistantStreaming && (
+            <MessageActionBar
+              messageContent={message.content}
+              messageId={message.id}
+            />
+          )}
         </>
       )}
       {message.attachments?.length ? (
@@ -175,6 +182,7 @@ export const ChatBubble = memo(function ChatBubble({
     >
       <div
         className={cn(
+          "group relative flex min-w-0 max-w-full flex-col",
           compact ? "max-w-[92%]" : "max-w-[88%]",
           isUser ? "items-end" : "items-start",
         )}
@@ -235,4 +243,3 @@ function Badge({
     </span>
   );
 }
-

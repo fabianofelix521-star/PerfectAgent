@@ -49,6 +49,7 @@ export class PackageManager {
       args,
       cwd: options.cwd,
       env: options.env,
+      pipeOutput: false,
     });
 
     process.output

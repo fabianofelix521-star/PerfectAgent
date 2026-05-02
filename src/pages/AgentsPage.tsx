@@ -82,6 +82,17 @@ const LOCAL_ADAPTER_KINDS = new Set<RuntimeKind>([
   "logos",
   "prometheus-mind",
   "nexus-prime",
+  "hippocrates-supreme",
+  "mendeleev",
+  "prompt-forge",
+  "silicon-valley",
+  "unreal-forge",
+  "aegis",
+  "content-empire",
+  "ad-commander",
+  "studio-one",
+  "wall-street",
+  "pixel-forge",
   "stigmergy-nexus",
   "ephemeral-genesis",
   "supreme-coordinator",
@@ -94,7 +105,6 @@ export function AgentsPage() {
   const setDefaultRuntime = useConfig((s) => s.setDefaultRuntime);
   const providers = useConfig((s) => s.providers);
   const models = useConfig((s) => s.models);
-  const settings = useConfig((s) => s.settings);
   const studioSelection = useConfig((s) => s.studioSelection);
 
   const [activeId, setActiveId] = useState<string>(runtimes[0]?.id ?? "");
@@ -115,8 +125,6 @@ export function AgentsPage() {
     return resolveRuntimeLlmConfig(runtime, {
       providers,
       models,
-      defaultProviderId: settings.defaultProviderId,
-      defaultModelId: settings.defaultModelId,
       selectionProviderId: studioSelection.providerId,
       selectionModel: studioSelection.model,
     });
@@ -213,7 +221,7 @@ export function AgentsPage() {
       active.nodes.some((n) => n.type === "llm") &&
       (!llmSpec || !resolvedLlm.modelId)
     ) {
-      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
+      toast.error("Selecione a IA no Code Studio ou defina um override no runtime.");
       return;
     }
 
@@ -450,8 +458,8 @@ export function AgentsPage() {
                 {
                   value: "",
                   label: resolvedLlm.providerId
-                    ? `(usar IA do app: ${providers[resolvedLlm.providerId]?.name ?? resolvedLlm.providerId})`
-                    : "(usar IA padrão do app)",
+                    ? `(usar IA selecionada no Code Studio: ${providers[resolvedLlm.providerId]?.name ?? resolvedLlm.providerId})`
+                    : "(usar IA selecionada no Code Studio)",
                 },
                 ...configuredProviders.map((p) => ({
                   value: p.id,
@@ -727,7 +735,7 @@ export function AgentsPage() {
     const model = resolvedLlm.modelId;
 
     if (!spec || !model) {
-      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
+      toast.error("Selecione a IA no Code Studio ou defina um override no runtime.");
       return;
     }
 
@@ -1012,6 +1020,61 @@ const RUNTIME_KIND_OPTIONS: Array<{
     desc: "Parlamento cognitivo que orquestra todos os runtimes especializados.",
   },
   {
+    value: "hippocrates-supreme",
+    label: "Hippocrates Supreme · Cure Discovery",
+    desc: "Medicina de precisão: mecanismos, alvos, compostos, sinergia, segurança e protocolos para revisão clínica.",
+  },
+  {
+    value: "mendeleev",
+    label: "Mendeleev · Advanced Chemistry",
+    desc: "Química avançada, síntese, materiais, eletroquímica, nanoquímica, química verde, alimentos e forense.",
+  },
+  {
+    value: "prompt-forge",
+    label: "Prompt Forge · Meta-Prompt",
+    desc: "Engenharia de prompt, segurança, adaptação multi-modelo e benchmark de prompts.",
+  },
+  {
+    value: "silicon-valley",
+    label: "Silicon Valley · Software Company",
+    desc: "Empresa de software inteira: CTO, arquitetura, backend, frontend, ML, QA, CI/CD, SRE e documentação.",
+  },
+  {
+    value: "unreal-forge",
+    label: "Unreal Forge · AAA Game Studio",
+    desc: "Estúdio completo de games para Unreal, Roblox, Unity e Godot.",
+  },
+  {
+    value: "aegis",
+    label: "Aegis · Cyber Defense",
+    desc: "Segurança defensiva contínua: WAF, SAST, APIs, dados, threat intel, incident response e AI security.",
+  },
+  {
+    value: "content-empire",
+    label: "Content Empire · SEO Automation",
+    desc: "Automação de conteúdo: blog, SEO, social, publicação, analytics e otimização.",
+  },
+  {
+    value: "ad-commander",
+    label: "Ad Commander · Paid Traffic",
+    desc: "Tráfego pago em Meta, Google, TikTok, LinkedIn, criativos, landing pages e atribuição.",
+  },
+  {
+    value: "studio-one",
+    label: "Studio One · Content Studio",
+    desc: "Produção de conteúdo para TikTok, Reels, YouTube, podcasts e cursos.",
+  },
+  {
+    value: "wall-street",
+    label: "Wall Street · Trading Swarm",
+    desc: "Trading, crypto, memecoins, Polymarket, portfólio, execução e risco.",
+  },
+  {
+    value: "pixel-forge",
+    label: "Pixel Forge · Graphic Design",
+    desc: "Design gráfico, branding, UI, social, print, motion, AI image prompts e mockups.",
+  },
+  {
     value: "stigmergy-nexus",
     label: "Stigmergy Vectorial Nexus",
     desc: "Runtime reativo baseado em estado compartilhado vetorial e cascata Processor → Reviewer.",
@@ -1058,7 +1121,6 @@ function RuntimeKindBlock({
   const setRuntimeTest = useConfig((s) => s.setRuntimeTest);
   const providers = useConfig((s) => s.providers);
   const models = useConfig((s) => s.models);
-  const settings = useConfig((s) => s.settings);
   const studioSelection = useConfig((s) => s.studioSelection);
   const [testing, setTesting] = useState(false);
   const [testingCode, setTestingCode] = useState(false);
@@ -1070,8 +1132,6 @@ function RuntimeKindBlock({
     return resolveRuntimeLlmConfig(active, {
       providers,
       models,
-      defaultProviderId: settings.defaultProviderId,
-      defaultModelId: settings.defaultModelId,
       selectionProviderId: studioSelection.providerId,
       selectionModel: studioSelection.model,
     });
@@ -1140,7 +1200,7 @@ function RuntimeKindBlock({
       const spec = getRuntimeProviderSpec(resolvedLlm.providerId);
       const model = resolvedLlm.modelId;
       if (!spec || !model) {
-        toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
+        toast.error("Selecione a IA no Code Studio ou defina um override no runtime.");
         return;
       }
       const r = await adapter.testCodeGeneration({ spec, model });

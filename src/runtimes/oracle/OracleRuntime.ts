@@ -9,6 +9,12 @@ import {
   tokenize,
   uniqueMerge,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  ORACLE_STRATEGY_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface StrategicScenario {
   name: string;
@@ -57,16 +63,37 @@ export interface OracleMemoryState {
 }
 
 export class CompetitiveIntelligenceAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Oracle competitive intelligence agent. Map direct, indirect, substitute, entrant and bundler threats before recommending strategy.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ORACLE_STRATEGY_RULES,
+  );
+
   analyze(context: StrategicContext): string[] {
     const competitors = context.competitors?.length ? context.competitors : ["incumbentes", "novos entrantes"];
-    return competitors.map((competitor) => {
+    const mapped = competitors.map((competitor) => {
       const focus = keywordScore(competitor, ["ai", "dev", "cloud", "security"]) > 0.1 ? "produto" : "distribuicao";
       return `${competitor}: monitorar hiring, releases, reviews e narrativa publica; provavel foco em ${focus}`;
     });
+    return uniqueMerge(mapped, [
+      "competidores diretos: produtos que resolvem o mesmo job-to-be-done",
+      "competidores indiretos: serviços adjacentes que capturam orçamento do cliente",
+      "substitutos: planilhas, consultorias, automações internas e não-consumo",
+      "potenciais entrantes: plataformas com distribuição e capital para copiar a categoria",
+      "bundlers: Microsoft Copilot/M365, Google Workspace e suites que podem embutir o valor no pacote",
+    ], 12);
   }
 }
 
 export class ScenarioPlannerAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Oracle scenario planner. Build realistic timelines, runway-aware options and reversible/irreversible decision criteria.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ORACLE_STRATEGY_RULES,
+  );
+
   plan(context: StrategicContext): StrategicScenario[] {
     const horizon = context.decisionHorizonDays ?? 90;
     const objectiveTokens = tokenize(context.objective);
@@ -83,7 +110,7 @@ export class ScenarioPlannerAgent {
         keyAssumptions: baseAssumptions,
         leadingIndicators: ["pipeline cresce de forma linear", "concorrentes nao reprecificam agressivamente"],
         strategicImplications: ["executar plano incremental", "preservar opcionalidade"],
-        recommendedActions: ["rodar pilotos curtos", "medir CAC/payback e risco operacional"],
+        recommendedActions: ["rodar pilotos curtos", "medir CAC/payback e risco operacional", "calcular burn rate, runway e necessidade de raise"],
         contingencyTriggers: ["queda de conversao >20%", "novo concorrente captura narrativa"],
       },
       {
@@ -92,7 +119,7 @@ export class ScenarioPlannerAgent {
         keyAssumptions: [...baseAssumptions, "sinal de demanda reprimida aparece cedo"],
         leadingIndicators: ["aumento de inbound", "clientes pedem expansao", "baixo churn inicial"],
         strategicImplications: ["antecipar infraestrutura e suporte", "defender posicionamento"],
-        recommendedActions: ["preparar playbook de escala", "criar fila de experimentos ICE"],
+        recommendedActions: ["preparar playbook de escala", "criar fila de experimentos ICE", "avaliar parceria/reseller com player maior"],
         contingencyTriggers: ["SLA degrada", "suporte vira gargalo"],
       },
       {
@@ -118,18 +145,35 @@ export class ScenarioPlannerAgent {
 }
 
 export class RedTeamAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Oracle red team agent. Stress-test strategy through finance, competition, regulation, partnership alternatives and exit valuation.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ORACLE_STRATEGY_RULES,
+  );
+
   attack(context: StrategicContext): string[] {
     return [
       `concorrente pode copiar ${context.objective.slice(0, 60)} e competir por preco`,
       "regulador ou plataforma pode restringir distribuicao",
       "cliente pode rejeitar por falta de confianca ou custo de troca",
       "assuncao oculta: demanda observada pode nao escalar para mercado amplo",
+      "runway insuficiente pode tornar a decisao urgente antes de haver dados suficientes",
+      "opcao ignorada: aliar-se ao gigante como implementation partner, reseller ou white-label",
+      "valuation de saida precisa considerar 3-8x ARR no SaaS Brasil, ajustado por growth e churn",
       ...(context.constraints ?? []).map((constraint) => `restricao critica: ${constraint}`),
     ];
   }
 }
 
 export class WeakSignalDetectorAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Oracle weak-signal detector. Monitor market, hiring, pricing, regulation, bundling and funding signals with realistic decision horizons.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ORACLE_STRATEGY_RULES,
+  );
+
   detect(context: StrategicContext): WeakSignal[] {
     const provided = context.knownSignals?.length
       ? context.knownSignals

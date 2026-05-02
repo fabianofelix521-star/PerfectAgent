@@ -9,6 +9,12 @@ import {
   tokenize,
   uniqueMerge,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  ATHENA_RESEARCH_RULES,
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface Source {
   type: "paper" | "book" | "expert" | "data" | "report" | "news";
@@ -64,6 +70,13 @@ export interface AthenaMemoryState {
 }
 
 export class LiteratureMapperAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Athena literature mapper. Map claims to sources, key researchers, platform-specific evidence and international datasets.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ATHENA_RESEARCH_RULES,
+  );
+
   map(query: ResearchQuery): EpistemicNode[] {
     const sources = query.sources?.length ? query.sources : [defaultSource(query.topic)];
     const claims = query.seedClaims?.length
@@ -88,6 +101,13 @@ export class LiteratureMapperAgent {
 }
 
 export class ContradictionResolverAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Athena contradiction resolver. Preserve heterogeneity and resolve conflicts by methodology, context and source quality.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ATHENA_RESEARCH_RULES,
+  );
+
   findAndResolve(nodes: EpistemicNode[]): Array<{ a: EpistemicNode; b: EpistemicNode; resolution: string }> {
     const contradictions: Array<{ a: EpistemicNode; b: EpistemicNode; resolution: string }> = [];
     for (let i = 0; i < nodes.length; i++) {
@@ -143,6 +163,13 @@ export class ContradictionResolverAgent {
 }
 
 export class HypothesisGeneratorAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Athena hypothesis generator. Turn gaps into testable studies with practical implications for stakeholders.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ATHENA_RESEARCH_RULES,
+  );
+
   generateGaps(topic: string, nodes: EpistemicNode[]): KnowledgeGap[] {
     const lowConfidence = nodes.filter((node) => node.confidence < 0.65);
     const contradictionTopics = nodes.filter((node) => node.contradictedBy.length > 0);
@@ -157,6 +184,13 @@ export class HypothesisGeneratorAgent {
 }
 
 export class CrossDomainSynthesizerAgent {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Athena cross-domain synthesizer. Integrate evidence without treating heterogeneous domains or platforms as a monolith.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    ATHENA_RESEARCH_RULES,
+  );
+
   synthesize(nodes: EpistemicNode[], query: ResearchQuery): string {
     const strongest = [...nodes].sort((a, b) => b.confidence - a.confidence).slice(0, 4);
     const domains = uniqueMerge([], nodes.map((node) => node.domain), 8);
@@ -165,6 +199,7 @@ export class CrossDomainSynthesizerAgent {
       `Dominios conectados: ${domains.join(", ")}.`,
       `Claims mais fortes: ${strongest.map((node) => node.claim).join(" | ")}.`,
       "Conclusao: aceitar apenas afirmacoes com fonte rastreavel, preservar incerteza onde houver contradicao e transformar gaps em hipoteses testaveis.",
+      "Implicações baseadas no consenso atual: pais devem reduzir exposição de risco e observar contexto; escolas devem ensinar literacia digital; reguladores devem exigir transparência de dados; plataformas devem medir danos por produto; pesquisadores devem separar plataforma, cultura e desenho metodológico.",
     ].join(" ");
   }
 }

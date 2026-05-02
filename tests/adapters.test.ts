@@ -17,12 +17,14 @@ vi.mock("@/services/api", () => ({
   },
 }));
 vi.mock("@/services/agentLoop", () => ({
-  runAgentLoop: vi.fn(async (p: { systemContext?: string }) => ({
+  runAgentLoop: vi.fn(async (p: { systemContext?: string; providerId?: string; model?: string }) => ({
     ok: true,
     files: [],
     iterations: 1,
     method: "bolt-artifact",
     capturedSystemContext: p.systemContext,
+    capturedProviderId: p.providerId,
+    capturedModel: p.model,
   })),
 }));
 vi.mock("@/services/webcontainer", () => ({ webContainerService: { mount: vi.fn(), boot: vi.fn() } }));
@@ -119,5 +121,22 @@ describe("GenericAdapter", () => {
     );
     expect(JSON.stringify(chunks)).toContain("BARE");
     expect(JSON.stringify(chunks)).not.toContain("OmegaCognitionEngine");
+  });
+
+  it("generateProject forwards the selected provider/model to runAgentLoop", async () => {
+    const { runAgentLoop } = await import("@/services/agentLoop");
+    const a = createAdapter(makeRuntime({ kind: "generic" }));
+    await a.generateProject({
+      request: "build",
+      spec,
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      onEvent: () => {},
+      onFiles: () => {},
+    });
+    const call = (runAgentLoop as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)!;
+    const arg = call[0] as { providerId?: string; model?: string };
+    expect(arg.providerId).toBe("deepseek");
+    expect(arg.model).toBe("deepseek-chat");
   });
 });

@@ -31,6 +31,17 @@ export interface PreviewError {
   ts: number;
 }
 
+export interface WebContainerSupportStatus {
+  supported: boolean;
+  hasWindow: boolean;
+  hasSharedArrayBuffer: boolean;
+  crossOriginIsolated: boolean;
+  protocol?: string;
+  host?: string;
+  inIframe: boolean;
+  reason?: string;
+}
+
 type LogListener = (chunk: string) => void;
 type ErrorListener = (err: PreviewError) => void;
 type UrlListener = (url: string, port: number) => void;
@@ -40,7 +51,6 @@ class WebContainerServiceImpl {
   private bootPromise: Promise<BootResult> | null = null;
   private devProcess: WebContainerProcess | null = null;
   private installProcess: WebContainerProcess | null = null;
-  private installedPackageJson: string | null = null;
   private logListeners = new Set<LogListener>();
   private errorListeners = new Set<ErrorListener>();
   private urlListeners = new Set<UrlListener>();
@@ -48,23 +58,85 @@ class WebContainerServiceImpl {
   private currentPort: number | null = null;
 
   isSupported(): boolean {
-    if (typeof window === "undefined") return false;
-    return (
-      typeof SharedArrayBuffer !== "undefined" &&
-      (window as { crossOriginIsolated?: boolean }).crossOriginIsolated === true
-    );
+    return this.getSupportStatus().supported;
+  }
+
+  getSupportStatus(): WebContainerSupportStatus {
+    if (typeof window === "undefined") {
+      return {
+        supported: false,
+        hasWindow: false,
+        hasSharedArrayBuffer: false,
+        crossOriginIsolated: false,
+        inIframe: false,
+        reason: "WebContainer only runs in the browser.",
+      };
+    }
+
+    const hasSharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+    const crossOriginIsolated = window.crossOriginIsolated === true;
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "::1";
+    const inIframe = window.self !== window.top;
+    const supported = hasSharedArrayBuffer && crossOriginIsolated;
+
+    let reason: string | undefined;
+    if (!supported) {
+      if (inIframe) {
+        reason =
+          "WebContainer cannot start inside this embedded frame because the top-level page is not cross-origin isolated.";
+      } else if (protocol !== "https:" && !isLocalhost) {
+        reason = "WebContainer requires HTTPS or localhost.";
+      } else if (!crossOriginIsolated) {
+        reason =
+          "The page is not cross-origin isolated. Reload from the Vite URL that serves COOP/COEP headers.";
+      } else if (!hasSharedArrayBuffer) {
+        reason = "SharedArrayBuffer is not available in this browser context.";
+      }
+    }
+
+    return {
+      supported,
+      hasWindow: true,
+      hasSharedArrayBuffer,
+      crossOriginIsolated,
+      protocol,
+      host,
+      inIframe,
+      reason,
+    };
+  }
+
+  formatUnsupportedMessage(status = this.getSupportStatus()): string {
+    const details = [
+      `crossOriginIsolated=${String(status.crossOriginIsolated)}`,
+      `SharedArrayBuffer=${String(status.hasSharedArrayBuffer)}`,
+      `iframe=${String(status.inIframe)}`,
+      status.host ? `host=${status.host}` : undefined,
+    ].filter(Boolean);
+    return [
+      "WebContainer indisponivel: o preview real precisa de cross-origin isolation no navegador.",
+      status.reason,
+      details.length ? `Diagnostico: ${details.join(", ")}.` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
   async boot(): Promise<BootResult> {
     if (this.wc) return { ok: true };
     if (this.bootPromise) return this.bootPromise;
 
-    if (!this.isSupported()) {
+    const support = this.getSupportStatus();
+    if (!support.supported) {
       return {
         ok: false,
         unsupported: true,
-        error:
-          "WebContainer requires cross-origin isolation. Use Chrome/Edge and reload after Vite restart.",
+        error: this.formatUnsupportedMessage(support),
       };
     }
 
@@ -172,10 +244,6 @@ class WebContainerServiceImpl {
   async installDeps(
     packageJson?: string,
   ): Promise<{ success: boolean; exitCode: number; cached?: boolean }> {
-    if (packageJson && this.installedPackageJson === packageJson) {
-      this.emit("\n$ npm install (cached)\n");
-      return { success: true, exitCode: 0, cached: true };
-    }
     if (this.installProcess) {
       try {
         this.installProcess.kill();
@@ -188,7 +256,7 @@ class WebContainerServiceImpl {
     this.installProcess = proc;
     const exitCode = await proc.exit;
     this.installProcess = null;
-    if (exitCode === 0 && packageJson) this.installedPackageJson = packageJson;
+    void packageJson;
     return { success: exitCode === 0, exitCode };
   }
 
@@ -280,7 +348,6 @@ class WebContainerServiceImpl {
       }
       this.wc = null;
     }
-    this.installedPackageJson = null;
     this.bootPromise = null;
   }
 }

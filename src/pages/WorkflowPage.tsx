@@ -30,7 +30,6 @@ export function WorkflowPage() {
   const upsertRuntime = useConfig((s) => s.upsertRuntime);
   const providers = useConfig((s) => s.providers);
   const models = useConfig((s) => s.models);
-  const settings = useConfig((s) => s.settings);
   const studioSelection = useConfig((s) => s.studioSelection);
   const [runtimeId, setRuntimeId] = useState(runtimes[0]?.id ?? "");
   const [input, setInput] = useState('{"question":"Explique este workflow."}');
@@ -82,8 +81,6 @@ export function WorkflowPage() {
     const resolvedLlm = resolveRuntimeLlmConfig(workflowRuntime, {
       providers,
       models,
-      defaultProviderId: settings.defaultProviderId,
-      defaultModelId: settings.defaultModelId,
       selectionProviderId: studioSelection.providerId,
       selectionModel: studioSelection.model,
     });
@@ -92,7 +89,7 @@ export function WorkflowPage() {
       workflowRuntime.nodes.some((node) => node.type === "llm") &&
       (!llmSpec || !resolvedLlm.modelId)
     ) {
-      toast.error("Selecione uma IA padrão no app ou defina um override no runtime.");
+      toast.error("Selecione a IA no Code Studio ou defina um override no runtime.");
       return;
     }
 

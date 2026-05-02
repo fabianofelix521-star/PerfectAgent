@@ -5,6 +5,7 @@ import { marketScanJob } from "@/tools/chrono/jobs/MarketScanJob";
 import { memoryConsolidationJob } from "@/tools/chrono/jobs/MemoryConsolidationJob";
 import { selfEvolutionJob } from "@/tools/chrono/jobs/SelfEvolutionJob";
 import { swarmHealthJob } from "@/tools/chrono/jobs/SwarmHealthJob";
+import { supremeRuntimeJobs } from "@/tools/chrono/jobs/SupremeRuntimeJobs";
 import { ToolRegistry } from "@/tools/core/ToolRegistry";
 
 export interface NexusToolsRuntime {
@@ -30,6 +31,7 @@ export async function initializeNexusTools(
   chrono.register(knowledgeUpdateJob, { schedule });
   chrono.register(audienceModelRefreshJob, { schedule });
   chrono.register(selfEvolutionJob, { schedule });
+  for (const job of supremeRuntimeJobs) chrono.register(job, { schedule });
 
   const failureTimer =
     options.startFailurePredictor ?? true
@@ -61,6 +63,23 @@ export { marketScanJob } from "@/tools/chrono/jobs/MarketScanJob";
 export { memoryConsolidationJob } from "@/tools/chrono/jobs/MemoryConsolidationJob";
 export { selfEvolutionJob } from "@/tools/chrono/jobs/SelfEvolutionJob";
 export { swarmHealthJob } from "@/tools/chrono/jobs/SwarmHealthJob";
+export {
+  aegisCodeScanJob,
+  aegisDataProtectionJob,
+  aegisEncryptionAuditJob,
+  aegisPerimeterJob,
+  aegisThreatIntelJob,
+  contentAnalyticsJob,
+  contentBlogWriterJob,
+  contentOptimizationJob,
+  contentSocialPublisherJob,
+  contentTrendResearchJob,
+  supremeRuntimeJobs,
+  tradingFundingRatesJob,
+  tradingMarketScanJob,
+  tradingPortfolioRebalanceJob,
+  tradingWhaleTrackerJob,
+} from "@/tools/chrono/jobs/SupremeRuntimeJobs";
 export { NexusToolBase } from "@/tools/core/NexusToolBase";
 export type {
   ExecutionApproach,

@@ -566,6 +566,83 @@ function seedCognitiveRuntimes(): AgentRuntime[] {
       "nexus-prime",
       "nexus",
     ),
+    seedCognitiveRuntime(
+      "rt-hippocrates-supreme",
+      "Hippocrates Supreme · Cure Discovery",
+      "Precision medicine swarm for mechanism mapping, targets, compounds, synergy simulation, safety and clinician-review protocol synthesis.",
+      "hippocrates-supreme",
+      "hippocrates",
+    ),
+    seedCognitiveRuntime(
+      "rt-mendeleev",
+      "Mendeleev · Advanced Chemistry",
+      "Advanced chemistry and materials swarm for synthesis, computation, materials, electrochemistry, nanochemistry, green chemistry, food and forensic chemistry.",
+      "mendeleev",
+      "mendeleev",
+    ),
+    seedCognitiveRuntime(
+      "rt-prompt-forge",
+      "Prompt Forge · Meta-Prompt Engineering",
+      "Prompt engineering swarm that designs, optimizes, secures, adapts and benchmarks system prompts and task prompts.",
+      "prompt-forge",
+      "prompt-forge",
+    ),
+    seedCognitiveRuntime(
+      "rt-silicon-valley",
+      "Silicon Valley · Software Company",
+      "Complete software-company swarm from CTO and architecture through backend, frontend, ML, QA, CI/CD, SRE and documentation.",
+      "silicon-valley",
+      "silicon-valley",
+    ),
+    seedCognitiveRuntime(
+      "rt-unreal-forge",
+      "Unreal Forge · AAA Game Studio",
+      "AAA game-development studio swarm for Unreal, Roblox, Unity and Godot projects.",
+      "unreal-forge",
+      "unreal-forge",
+    ),
+    seedCognitiveRuntime(
+      "rt-aegis",
+      "Aegis · Cybersecurity Defense",
+      "Continuous defensive cybersecurity swarm for perimeter, app, data, threat-intel and AI-security layers.",
+      "aegis",
+      "aegis",
+    ),
+    seedCognitiveRuntime(
+      "rt-content-empire",
+      "Content Empire · SEO Automation",
+      "Content automation swarm for blog creation, SEO, social media, publishing, analytics and optimization.",
+      "content-empire",
+      "content-empire",
+    ),
+    seedCognitiveRuntime(
+      "rt-ad-commander",
+      "Ad Commander · Paid Traffic",
+      "Paid traffic swarm for Meta, Google, TikTok, LinkedIn, creative, landing pages and attribution.",
+      "ad-commander",
+      "ad-commander",
+    ),
+    seedCognitiveRuntime(
+      "rt-studio-one",
+      "Studio One · Streaming Content",
+      "Production swarm for TikTok, Reels, YouTube, podcasts and course content.",
+      "studio-one",
+      "studio-one",
+    ),
+    seedCognitiveRuntime(
+      "rt-wall-street",
+      "Wall Street · Trading Swarm",
+      "Trading, crypto, memecoin and investment swarm with technical, fundamental, on-chain, execution and risk agents.",
+      "wall-street",
+      "wall-street",
+    ),
+    seedCognitiveRuntime(
+      "rt-pixel-forge",
+      "Pixel Forge · Graphic Design",
+      "Graphic design swarm for brand, UI, social, print, motion, AI image prompts and mockups.",
+      "pixel-forge",
+      "pixel-forge",
+    ),
   ];
 }
 
@@ -1483,6 +1560,17 @@ export function defaultCapabilitiesFor(kind: RuntimeKind): RuntimeCapabilities {
     case "logos":
     case "prometheus-mind":
     case "nexus-prime":
+    case "hippocrates-supreme":
+    case "mendeleev":
+    case "prompt-forge":
+    case "silicon-valley":
+    case "unreal-forge":
+    case "aegis":
+    case "content-empire":
+    case "ad-commander":
+    case "studio-one":
+    case "wall-street":
+    case "pixel-forge":
       return {
         canPlan: true,
         canGenerateCode: true,

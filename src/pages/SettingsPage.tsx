@@ -326,10 +326,10 @@ function ModelsTab() {
       </Surface>
 
       <Surface className="space-y-5">
-        <SectionTitle icon={KeyRound} title="Padrões globais" desc="Defaults compartilhados por Chat e Code Studio." />
+        <SectionTitle icon={KeyRound} title="Fallbacks legados" desc="Chat, Code Studio e runtimes agora usam a seleção local. Estes campos ficam só para compatibilidade com fluxos antigos." />
         {providerOptions.length ? (
           <SelectControl<string>
-            label="Provedor padrão"
+            label="Provedor legado"
             value={defaultProviderId}
             onChange={(id) => {
               const firstModel = getModelOptions(id, providers, models, true)[0]?.id;
@@ -344,7 +344,7 @@ function ModelsTab() {
         )}
         {modelOptions.length ? (
           <SelectControl<string>
-            label="Modelo padrão"
+            label="Modelo legado"
             value={settings.defaultModelId ?? modelOptions[0].value}
             onChange={(id) => setSettings({ defaultModelId: id })}
             options={modelOptions}
@@ -352,7 +352,7 @@ function ModelsTab() {
         ) : null}
         {runtimeOptions.length ? (
           <SelectControl<string>
-            label="Runtime padrão"
+            label="Runtime legado"
             value={settings.defaultRuntimeId ?? runtimes.find((r) => r.isDefault)?.id ?? runtimeOptions[0].value}
             onChange={(id) => setDefaultRuntime(id)}
             options={runtimeOptions}
@@ -682,7 +682,15 @@ function SecurityTab() {
           <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Master API Key</span>
           <button onClick={regenerate} className="text-xs font-bold text-slate-700 hover:text-slate-950">Regenerar</button>
         </div>
-        <code className="mt-2 block break-all rounded-xl bg-slate-950 px-3 py-2 font-mono text-xs text-cyan-100">{settings.masterKey}</code>
+        <p className="mt-2 text-xs font-medium text-slate-500">
+          Precisa ser igual ao <code>NEXUS_AUTH_KEY</code> ou <code>APP_AUTH_KEY</code> usado para iniciar o backend. Se estiver diferente, todos os testes de API retornam unauthorized.
+        </p>
+        <input
+          value={settings.masterKey}
+          onChange={(event) => setSettings({ masterKey: event.target.value })}
+          className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-2 font-mono text-xs text-cyan-100 outline-none ring-2 ring-transparent focus:ring-cyan-300/40"
+          spellCheck={false}
+        />
       </div>
       <div className="rounded-[20px] border border-white/70 bg-white/60 p-4">
         <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">CORS Origins</span>

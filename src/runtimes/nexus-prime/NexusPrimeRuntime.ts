@@ -21,8 +21,26 @@ import {
   tokenize,
   uniqueMerge,
 } from "@/runtimes/shared/cognitiveCore";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  NEXUS_PRIME_PARLIAMENT_RULES,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 import { SophiaRuntime } from "@/runtimes/sophia/SophiaRuntime";
 import { codeDiffFromText, VulcanRuntime } from "@/runtimes/vulcan/VulcanRuntime";
+import { HippocratesSupremeRuntime } from "@/runtimes/hippocrates-supreme/HippocratesSupremeRuntime";
+import { MendeleevRuntime } from "@/runtimes/mendeleev/MendeleevRuntime";
+import { PromptForgeRuntime } from "@/runtimes/prompt-forge/PromptForgeRuntime";
+import { SiliconValleyRuntime } from "@/runtimes/silicon-valley/SiliconValleyRuntime";
+import { UnrealForgeRuntime } from "@/runtimes/unreal-forge/UnrealForgeRuntime";
+import { AegisRuntime } from "@/runtimes/aegis/AegisRuntime";
+import { ContentEmpireRuntime } from "@/runtimes/content-empire/ContentEmpireRuntime";
+import { AdCommanderRuntime } from "@/runtimes/ad-commander/AdCommanderRuntime";
+import { StudioOneRuntime } from "@/runtimes/studio-one/StudioOneRuntime";
+import { WallStreetRuntime } from "@/runtimes/wall-street/WallStreetRuntime";
+import { PixelForgeRuntime } from "@/runtimes/pixel-forge/PixelForgeRuntime";
+import type { SupremeRuntimeResponse } from "@/runtimes/shared/supremeRuntime";
 import type { NexusToolInput, NexusToolOutput } from "@/tools/core/NexusToolBase";
 import { ToolRegistry } from "@/tools/core/ToolRegistry";
 import { getToolsForRuntime } from "@/tools/runtimeIntegration";
@@ -103,6 +121,13 @@ interface NexusMemoryState {
 }
 
 export class CognitiveParliament {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Nexus Prime Cognitive Parliament. Integrate runtime perspectives through emergence, productive contradiction, explicit contribution mapping and epistemic limits.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    NEXUS_PRIME_PARLIAMENT_RULES,
+  );
+
   async convene(
     query: string,
     relevantRuntimes: string[],
@@ -116,10 +141,22 @@ export class CognitiveParliament {
       mean(perspectives.map((perspective) => perspective.confidence)) * 0.75 +
         clamp01(convergence.length / Math.max(1, relevantRuntimes.length)) * 0.25,
     );
+    const contributionMap = perspectives.map(
+      (perspective) => `${perspective.runtimeId}: ${perspective.evidence[0] ?? perspective.perspective.slice(0, 90)}`,
+    );
+    const epistemicLimits = uniqueMerge(
+      [],
+      perspectives.flatMap((perspective) => perspective.limitations),
+      5,
+    );
+    const metaphor = this.synthesisMetaphor(relevantRuntimes);
     return {
       integratedAnswer: [
         `Nexus Prime processou "${query.slice(0, 140)}" com ${relevantRuntimes.join(", ")}.`,
         perspectives.map((perspective) => `[${perspective.runtimeId}] ${perspective.perspective}`).join(" "),
+        contributionMap.length ? `Mapa de contribuição: ${contributionMap.join(" | ")}.` : "",
+        epistemicLimits.length ? `Limites epistêmicos: ${epistemicLimits.join("; ")}.` : "Limites epistêmicos: não há evidência externa suficiente para transformar a síntese em certeza operacional.",
+        `Metáfora de síntese: ${metaphor}`,
         `Sintese: agir com confianca ${(confidenceLevel * 100).toFixed(0)}%, preservando incertezas explicitas.`,
       ]
         .filter(Boolean)
@@ -153,6 +190,16 @@ export class CognitiveParliament {
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 5)
       .map((perspective) => `${perspective.runtimeId}: ${perspective.evidence[0] ?? perspective.perspective}`);
+  }
+
+  private synthesisMetaphor(runtimeIds: string[]): string {
+    if (runtimeIds.includes("athena") && runtimeIds.includes("oracle")) {
+      return "Athena desenha o mapa, Oracle calcula a travessia, e o parlamento decide onde pisar sem fingir que o nevoeiro acabou.";
+    }
+    if (runtimeIds.includes("sophia") && runtimeIds.includes("logos")) {
+      return "Sophia oferece a chama simbólica, Logos molda a lâmpada conceitual, e Nexus Prime regula a luz para não cegar nem apagar.";
+    }
+    return "Cada runtime é uma margem do mesmo rio; a síntese é a ponte provisória que permite atravessar sem negar a correnteza.";
   }
 }
 
@@ -201,7 +248,7 @@ export class EmergenceDetector {
         const overlap = keywordScore(a.perspective, tokenize(b.perspective));
         if (overlap > 0.22) {
           insights.push({
-            insight: `${a.runtimeId} e ${b.runtimeId} chegaram a padrao convergente por rotas independentes`,
+            insight: `INSIGHT EMERGENTE: ${a.runtimeId} e ${b.runtimeId} chegaram a padrao convergente por rotas independentes`,
             sourceRuntimes: [a.runtimeId, b.runtimeId],
             emergenceType: "convergence",
             noveltyScore: clamp01(0.45 + overlap),
@@ -209,7 +256,7 @@ export class EmergenceDetector {
           });
         } else if (Math.abs(a.confidence - b.confidence) > 0.35) {
           insights.push({
-            insight: `${a.runtimeId} e ${b.runtimeId} discordam materialmente; a divergencia revela dimensao oculta`,
+            insight: `CONTRADIÇÃO PRODUTIVA: ${a.runtimeId} e ${b.runtimeId} discordam materialmente; a divergencia revela dimensao oculta`,
             sourceRuntimes: [a.runtimeId, b.runtimeId],
             emergenceType: "contradiction",
             noveltyScore: 0.62,
@@ -253,6 +300,13 @@ export class SelfEvolutionEngine {
 }
 
 export class NexusPrimeRuntime {
+  readonly systemPrompt = withRuntimeInstructions(
+    "Nexus Prime meta-orchestrator. Convene the cognitive parliament, detect emergent convergence, preserve productive contradiction and state epistemic limits.",
+    GLOBAL_CITATION_RULE,
+    CONFIDENCE_CALIBRATION_RULE,
+    NEXUS_PRIME_PARLIAMENT_RULES,
+  );
+
   private readonly runtimes = new Map<string, unknown>([
     ["prometheus", new PrometheusRuntime()],
     ["morpheus", new MorpheusRuntime()],
@@ -265,6 +319,17 @@ export class NexusPrimeRuntime {
     ["asclepius", new AsclepiusRuntime()],
     ["logos", new LogosRuntime()],
     ["prometheus-mind", new PrometheusMindRuntime()],
+    ["hippocrates-supreme", new HippocratesSupremeRuntime()],
+    ["mendeleev", new MendeleevRuntime()],
+    ["prompt-forge", new PromptForgeRuntime()],
+    ["silicon-valley", new SiliconValleyRuntime()],
+    ["unreal-forge", new UnrealForgeRuntime()],
+    ["aegis", new AegisRuntime()],
+    ["content-empire", new ContentEmpireRuntime()],
+    ["ad-commander", new AdCommanderRuntime()],
+    ["studio-one", new StudioOneRuntime()],
+    ["wall-street", new WallStreetRuntime()],
+    ["pixel-forge", new PixelForgeRuntime()],
   ]);
   private readonly parliament = new CognitiveParliament();
   private readonly metacognition = new MetaCognitionEngine();
@@ -332,6 +397,17 @@ export class NexusPrimeRuntime {
       { id: "asclepius", score: keywordScore(q, ["healing", "longevity", "herb", "inflammation", "pathway", "metabolic", "sleep", "remedy", "clinical", "medicine", "pubmed"]) },
       { id: "logos", score: keywordScore(q, ["logos", "metaphysics", "ontology", "meaning", "philosophy", "esoteric", "hermetic", "initiation", "self mastery", "virtue"]) },
       { id: "prometheus-mind", score: keywordScore(q, ["neuroscience", "brain", "focus", "memory", "attention", "cognition", "consciousness", "neuroplasticity", "learning", "sleep"]) },
+      { id: "hippocrates-supreme", score: keywordScore(q, ["cure", "cancer", "treatment", "mechanism", "drug", "compound", "pathway", "synergy", "dosage", "protocol"]) },
+      { id: "mendeleev", score: keywordScore(q, ["chemistry", "molecule", "reaction", "synthesis", "material", "polymer", "battery", "nanoparticle"]) },
+      { id: "prompt-forge", score: keywordScore(q, ["prompt", "system prompt", "instruction", "jailbreak", "prompt injection", "meta prompt"]) },
+      { id: "silicon-valley", score: keywordScore(q, ["code", "software", "app", "system", "architecture", "frontend", "backend", "sre", "product"]) },
+      { id: "unreal-forge", score: keywordScore(q, ["game", "3d", "unreal", "roblox", "unity", "godot", "blueprint", "luau"]) },
+      { id: "aegis", score: keywordScore(q, ["security", "attack", "protect", "vulnerability", "waf", "cve", "incident", "prompt injection"]) },
+      { id: "content-empire", score: keywordScore(q, ["blog", "seo", "social media", "content", "post", "publish", "wordpress", "analytics"]) },
+      { id: "ad-commander", score: keywordScore(q, ["ads", "traffic", "meta ads", "google ads", "paid", "roas", "campaign", "creative"]) },
+      { id: "studio-one", score: keywordScore(q, ["video", "tiktok", "youtube", "reels", "streaming", "thumbnail", "script", "retention"]) },
+      { id: "wall-street", score: keywordScore(q, ["trade", "crypto", "memecoin", "invest", "portfolio", "polymarket", "wallet", "exchange"]) },
+      { id: "pixel-forge", score: keywordScore(q, ["design", "logo", "brand", "graphic", "visual", "mockup", "image prompt", "ui"]) },
     ];
     const selected = scores
       .filter((item) => item.score > 0.05)
@@ -503,6 +579,83 @@ export class NexusPrimeRuntime {
           collaborationNeeded: ["asclepius", "logos", "athena"],
         };
       }
+      case "hippocrates-supreme":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as HippocratesSupremeRuntime,
+          query,
+          ["apollo", "asclepius", "athena"],
+        );
+      case "mendeleev":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as MendeleevRuntime,
+          query,
+          ["athena", "vulcan"],
+        );
+      case "prompt-forge":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as PromptForgeRuntime,
+          query,
+          ["nexus-prime", "vulcan"],
+        );
+      case "silicon-valley":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as SiliconValleyRuntime,
+          query,
+          ["vulcan", "aegis", "prompt-forge"],
+        );
+      case "unreal-forge":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as UnrealForgeRuntime,
+          query,
+          ["morpheus", "silicon-valley"],
+        );
+      case "aegis":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as AegisRuntime,
+          query,
+          ["vulcan", "athena"],
+        );
+      case "content-empire":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as ContentEmpireRuntime,
+          query,
+          ["hermes", "silicon-valley", "ad-commander"],
+        );
+      case "ad-commander":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as AdCommanderRuntime,
+          query,
+          ["hermes", "content-empire", "oracle"],
+        );
+      case "studio-one":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as StudioOneRuntime,
+          query,
+          ["content-empire", "pixel-forge"],
+        );
+      case "wall-street":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as WallStreetRuntime,
+          query,
+          ["prometheus", "oracle", "aegis"],
+        );
+      case "pixel-forge":
+        return this.getSupremePerspective(
+          runtimeId,
+          runtime as PixelForgeRuntime,
+          query,
+          ["morpheus", "content-empire", "studio-one"],
+        );
       default:
         return {
           runtimeId,
@@ -511,8 +664,25 @@ export class NexusPrimeRuntime {
           evidence: [],
           limitations: ["runtime nao registrado"],
           collaborationNeeded: [],
-        };
+      };
     }
+  }
+
+  private async getSupremePerspective(
+    runtimeId: string,
+    runtime: { buildContext: (query: string) => Promise<{ confidence: number; evidence: string[]; response: SupremeRuntimeResponse }> },
+    query: string,
+    collaborationNeeded: string[],
+  ): Promise<RuntimePerspective> {
+    const built = await runtime.buildContext(query);
+    return {
+      runtimeId,
+      perspective: built.response.synthesis.summary,
+      confidence: built.confidence,
+      evidence: uniqueMerge([], built.evidence, 6),
+      limitations: uniqueMerge([], built.response.risks, 4),
+      collaborationNeeded,
+    };
   }
 
   private async enrichPerspectiveWithTools(
@@ -728,6 +898,17 @@ function inferCause(runtimeId: string): string {
     vulcan: "code-change",
     oracle: "strategic-action",
     "prometheus-mind": "protocol",
+    "hippocrates-supreme": "mechanistic-intervention",
+    mendeleev: "chemical-route",
+    "prompt-forge": "instruction-design",
+    "silicon-valley": "software-system",
+    "unreal-forge": "game-production-decision",
+    aegis: "security-control",
+    "content-empire": "content-operation",
+    "ad-commander": "media-buying-decision",
+    "studio-one": "content-production-choice",
+    "wall-street": "market-positioning",
+    "pixel-forge": "visual-system-choice",
   };
   return causes[runtimeId] ?? "intervention";
 }
@@ -738,6 +919,17 @@ function inferEffect(runtimeId: string): string {
     vulcan: "defect-rate",
     oracle: "strategic-outcome",
     "prometheus-mind": "cognitive-performance",
+    "hippocrates-supreme": "research-protocol-quality",
+    mendeleev: "chemical-feasibility",
+    "prompt-forge": "prompt-reliability",
+    "silicon-valley": "delivery-quality",
+    "unreal-forge": "playable-production-quality",
+    aegis: "risk-reduction",
+    "content-empire": "organic-growth",
+    "ad-commander": "ROAS-and-CAC",
+    "studio-one": "retention-and-reach",
+    "wall-street": "risk-adjusted-return",
+    "pixel-forge": "visual-conversion-quality",
   };
   return effects[runtimeId] ?? "outcome";
 }

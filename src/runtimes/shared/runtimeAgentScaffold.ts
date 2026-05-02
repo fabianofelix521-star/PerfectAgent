@@ -13,6 +13,19 @@ import type {
   ExecutionContext,
 } from "@/types/agents";
 import { clamp01, now, stableId, tokenize, uniqueMerge } from "@/runtimes/shared/cognitiveCore";
+import {
+  assessOutputActionability,
+  assessOutputCoherence,
+  assessOutputCompleteness,
+  assessOutputDepth,
+  assessOutputEvidence,
+  calibrateAnalysisConfidence,
+} from "@/runtimes/shared/confidenceCalibration";
+import {
+  CONFIDENCE_CALIBRATION_RULE,
+  GLOBAL_CITATION_RULE,
+  withRuntimeInstructions,
+} from "@/runtimes/shared/runtimeInstructions";
 
 export interface RuntimeAgentConfig {
   id: string;
@@ -125,7 +138,11 @@ export abstract class RuntimeExpertAgent implements BaseAgent {
     this.supervisorId = config.supervisorId;
     this.tier = config.tier;
     this.tags = [...config.tags];
-    this.systemPrompt = config.systemPrompt;
+    this.systemPrompt = withRuntimeInstructions(
+      config.systemPrompt,
+      GLOBAL_CITATION_RULE,
+      CONFIDENCE_CALIBRATION_RULE,
+    );
     this.tools = config.tools ?? [];
     this.capabilities =
       config.capabilities ??
@@ -154,6 +171,7 @@ export abstract class RuntimeExpertAgent implements BaseAgent {
         followUpSuggestions: analysis.followUpSuggestions,
         collaborationNeeded: analysis.collaborationNeeded,
       };
+      output.confidence = await this.selfEvaluate(output);
       this.recordSuccess(input, output, latencyMs);
       this.status = "idle";
       return output;
@@ -173,7 +191,27 @@ export abstract class RuntimeExpertAgent implements BaseAgent {
   }
 
   async selfEvaluate(output: AgentOutput): Promise<number> {
-    return clamp01(output.confidence);
+    return calibrateAnalysisConfidence(output);
+  }
+
+  protected assessCompleteness(output: AgentOutput): number {
+    return assessOutputCompleteness(output);
+  }
+
+  protected assessEvidence(output: AgentOutput): number {
+    return assessOutputEvidence(output);
+  }
+
+  protected assessActionability(output: AgentOutput): number {
+    return assessOutputActionability(output);
+  }
+
+  protected assessCoherence(output: AgentOutput): number {
+    return assessOutputCoherence(output);
+  }
+
+  protected assessDepth(output: AgentOutput): number {
+    return assessOutputDepth(output);
   }
 
   async collaborate(

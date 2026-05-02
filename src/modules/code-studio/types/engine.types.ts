@@ -29,6 +29,7 @@ export interface SpawnOptions {
   args: string[];
   cwd?: string;
   env?: Record<string, string>;
+  pipeOutput?: boolean;
 }
 
 export interface EngineEvents {
