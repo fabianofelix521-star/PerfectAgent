@@ -23,6 +23,7 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
 const DEFAULT_DEV_AUTH_KEY = "pa-local-dev-key";
 const API_AUTH_KEY = process.env.NEXUS_AUTH_KEY ?? process.env.APP_AUTH_KEY ?? "";
+const NEXUS_CORS_ORIGINS = process.env.NEXUS_CORS_ORIGINS ?? "";
 const AUTH_COOKIE_NAME = "nexus_auth";
 const AUTH_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const AUTH_COOKIE_SECURE = process.env.NEXUS_AUTH_COOKIE_SECURE === "true";
@@ -47,7 +48,61 @@ function loadLangGraph(): Promise<LangGraphModule> {
   return langGraphModulePromise;
 }
 
-app.use(cors({ origin: true }));
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function parseCorsOrigins(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((item) => normalizeOrigin(item))
+    .filter(Boolean);
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
+function inferRequestOrigin(req: express.Request): string {
+  const forwardedProto = req
+    .header("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+  const forwardedHost = req
+    .header("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+  const host = forwardedHost || req.header("host") || "";
+  const proto = forwardedProto || (req.secure ? "https" : "http");
+  return host ? normalizeOrigin(`${proto}://${host}`) : "";
+}
+
+const EXPLICIT_CORS_ORIGINS = parseCorsOrigins(NEXUS_CORS_ORIGINS);
+
+app.use(
+  cors((req, callback) => {
+    const requestOrigin = req.header("origin");
+    if (!requestOrigin) {
+      callback(null, { origin: false });
+      return;
+    }
+
+    const normalizedOrigin = normalizeOrigin(requestOrigin);
+    const sameOrigin = normalizedOrigin === inferRequestOrigin(req);
+    const devLoopback = process.env.NODE_ENV !== "production" && isLoopbackOrigin(normalizedOrigin);
+    const explicitlyAllowed = EXPLICIT_CORS_ORIGINS.includes(normalizedOrigin);
+    const allowOrigin = EXPLICIT_CORS_ORIGINS.length > 0
+      ? explicitlyAllowed
+      : (sameOrigin || devLoopback);
+
+    callback(null, {
+      origin: allowOrigin ? requestOrigin : false,
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["content-type", "authorization", "x-api-key", "x-nexus-auth"],
+    });
+  }),
+);
 // Cross-origin isolation is required by WebContainer (SharedArrayBuffer).
 // In dev the Vite server sets COOP/COEP for the frontend, while this backend
 // still needs CORP so the isolated page can consume API responses on :3336.

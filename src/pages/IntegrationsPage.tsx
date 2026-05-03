@@ -5,6 +5,7 @@ import { WorkspaceShell, Surface, HeaderAction, Modal, EditableField, SelectCont
 import type { Integration } from "@/types";
 import { api } from "@/services/api";
 import { toast } from "@/components/Toast";
+import { TELEGRAM_BOT_COMMANDS } from "@/modules/integrations/integrations/TelegramIntegration";
 
 function rid() { return `in-${Math.random().toString(36).slice(2, 9)}`; }
 
@@ -120,6 +121,20 @@ export function IntegrationsPage() {
                   </span>
                 </div>
               )}
+              {i.kind === "telegram" ? (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Bot commands</p>
+                  <div className="mt-2 grid gap-1">
+                    {TELEGRAM_BOT_COMMANDS.map((item) => (
+                      <p key={item.command} className="text-xs font-medium text-slate-600">
+                        <span className="font-mono font-bold text-slate-800">{item.command}</span>
+                        {" - "}
+                        {item.description}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
                 <button onClick={() => test(i.id)} disabled={testingId === i.id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                   {testingId === i.id ? <Spinner size={12} /> : <Send className="h-3 w-3" />} Testar

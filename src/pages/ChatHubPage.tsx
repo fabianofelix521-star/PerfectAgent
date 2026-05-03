@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   MessageCircle,
+  History,
   Mic,
   MicOff,
   Plus,
@@ -12,6 +13,7 @@ import {
   Square,
   Trash2,
   Volume2,
+  X,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChatBubble } from "@/components/ChatBubble";
@@ -136,6 +138,7 @@ export function ChatHubPage() {
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [queryDraft, setQueryDraft] = useState("");
   const query = useDebouncedValue(queryDraft, 80);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -466,9 +469,135 @@ export function ChatHubPage() {
     setEditingTitle("");
   }
 
+  function runSlashCommand(commandText: string): string | null {
+    if (!commandText.startsWith("/")) return null;
+
+    const [commandRaw, ...argParts] = commandText.trim().split(/\s+/);
+    const command = commandRaw.toLowerCase();
+    const arg = argParts.join(" ").trim();
+    const argLc = arg.toLowerCase();
+
+    const providerList = Object.values(providers);
+    const runtimeList = runtimes;
+    const allModels = models;
+
+    if (command === "/help" || command === "/comandos") {
+      return [
+        "Comandos disponíveis:",
+        "- /runtime <id|nome|direct>",
+        "- /provider <id|nome>",
+        "- /model <id|nome>",
+        "- /voice <on|off|tts|stt|realtime>",
+        "- /history",
+        "- /help",
+      ].join("\n");
+    }
+
+    if (command === "/history") {
+      setMobileHistoryOpen(true);
+      return "Histórico aberto. Selecione uma conversa para continuar.";
+    }
+
+    if (command === "/runtime") {
+      if (!arg) {
+        return `Runtime atual: ${runtimeValue}`;
+      }
+      if (argLc === "direct" || argLc === "direto") {
+        setSelection({ runtimeId: DIRECT_RUNTIME });
+        return "Runtime alterado para Direct Provider.";
+      }
+      const target = runtimeList.find(
+        (runtime) => runtime.id.toLowerCase() === argLc || runtime.name.toLowerCase() === argLc,
+      );
+      if (!target) {
+        return `Runtime nao encontrado: ${arg}.`;
+      }
+      setSelection({ runtimeId: target.id });
+      return `Runtime alterado para ${target.name} (${target.id}).`;
+    }
+
+    if (command === "/provider") {
+      if (!arg) {
+        return `Provider atual: ${providerId ?? "nenhum"}`;
+      }
+      const target = providerList.find(
+        (provider) => provider.id.toLowerCase() === argLc || provider.name.toLowerCase() === argLc,
+      );
+      if (!target) {
+        return `Provider nao encontrado: ${arg}.`;
+      }
+      const nextModel = getModelOptions(target.id, providers, models)[0]?.id;
+      setSelection({ providerId: target.id, model: nextModel });
+      return `Provider alterado para ${target.name} (${target.id}).`;
+    }
+
+    if (command === "/model") {
+      if (!arg) {
+        return `Modelo atual: ${modelId ?? "nenhum"}`;
+      }
+      const target = allModels.find(
+        (model) => model.id.toLowerCase() === argLc || model.name.toLowerCase() === argLc || model.label.toLowerCase() === argLc,
+      );
+      if (!target) {
+        return `Modelo nao encontrado: ${arg}.`;
+      }
+      setSelection({ providerId: target.providerId, model: target.id });
+      return `Modelo alterado para ${target.label} (${target.id}).`;
+    }
+
+    if (command === "/voice") {
+      if (!arg || argLc === "on") {
+        setSelection({ voiceEnabled: true, voiceMode });
+        return `Voz ativada (${voiceMode.toUpperCase()}).`;
+      }
+      if (argLc === "off") {
+        stopVoiceCapture();
+        setSelection({ voiceEnabled: false, voiceMode: undefined });
+        return "Voz desativada.";
+      }
+      if (argLc === "tts" || argLc === "stt" || argLc === "realtime") {
+        setSelection({ voiceEnabled: true, voiceMode: argLc as ProviderAudioMode });
+        return `Voz configurada para ${argLc.toUpperCase()}.`;
+      }
+      return "Uso: /voice <on|off|tts|stt|realtime>";
+    }
+
+    return "Comando nao reconhecido. Use /help para listar comandos.";
+  }
+
   async function sendText(text: string) {
     const clean = text.trim();
     if (!clean || streaming) return;
+
+    const slashResponse = runSlashCommand(clean);
+    if (slashResponse) {
+      const thread = activeThread ?? newChatThread("Comandos");
+      if (!activeThread) {
+        addThread(thread);
+        navigate(`/chat/${thread.id}`);
+      }
+      const createdAt = Date.now();
+      appendMessage(thread.id, {
+        id: `u-${createdAt.toString(36)}`,
+        role: "user",
+        content: clean,
+        createdAt,
+        providerId,
+        modelId,
+      });
+      appendMessage(thread.id, {
+        id: `a-${(createdAt + 1).toString(36)}`,
+        role: "assistant",
+        content: slashResponse,
+        createdAt: createdAt + 1,
+        providerId,
+        modelId,
+      });
+      setInput("");
+      forceScrollToBottom();
+      return;
+    }
+
     const shouldResumeRealtimeVoice = voiceEnabled && voiceMode === "realtime";
     if (shouldResumeRealtimeVoice) {
       stopVoiceCapture();
@@ -769,6 +898,15 @@ export function ChatHubPage() {
                 Conversa agêntica
               </h1>
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileHistoryOpen(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/70 bg-white/70 text-slate-700 transition hover:text-slate-950 lg:hidden"
+              aria-label="Abrir histórico"
+              title="Histórico"
+            >
+              <History className="h-4 w-4" />
+            </button>
             <div className="nexus-mobile-chat-pickers grid w-full min-w-0 grid-cols-4 gap-1 md:hidden">
               <LabeledSelect
                 label="Provider"
@@ -996,19 +1134,29 @@ export function ChatHubPage() {
 
         <div className="relative mx-auto w-full max-w-[980px] px-3 pb-4 sm:px-8 sm:pb-5 lg:px-10 lg:pb-8">
           <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500 sm:mb-3 sm:text-sm">
-            <button
-              type="button"
-              onClick={retryLast}
-              disabled={
-                !activeThread?.messages.some(
-                  (message) => message.role === "user",
-                ) || streaming
-              }
-              className="inline-flex items-center gap-2 transition hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Retry last
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileHistoryOpen(true)}
+                className="inline-flex items-center gap-2 transition hover:text-slate-900 lg:hidden"
+              >
+                <History className="h-4 w-4" />
+                Histórico
+              </button>
+              <button
+                type="button"
+                onClick={retryLast}
+                disabled={
+                  !activeThread?.messages.some(
+                    (message) => message.role === "user",
+                  ) || streaming
+                }
+                className="inline-flex items-center gap-2 transition hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Retry last
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => activeThread && clearThread(activeThread.id)}
@@ -1059,6 +1207,103 @@ export function ChatHubPage() {
           </form>
         </div>
       </div>
+
+      {mobileHistoryOpen ? (
+        <div className="fixed inset-0 z-40 bg-slate-900/35 p-2 lg:hidden" role="dialog" aria-modal="true">
+          <div className="ml-auto flex h-full w-[min(92vw,360px)] flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white/95 p-4 shadow-2xl backdrop-blur-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Sessions</p>
+                <h2 className="text-base font-semibold text-slate-950">Chats</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={createThread}
+                  className="rounded-full bg-[#17172d] p-2 text-white"
+                  aria-label="Nova conversa"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileHistoryOpen(false)}
+                  className="rounded-full border border-slate-200 bg-white p-2 text-slate-700"
+                  aria-label="Fechar histórico"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <label className="mb-3 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500">
+              <Search className="h-3.5 w-3.5" />
+              <input
+                value={queryDraft}
+                onChange={(event) => setQueryDraft(event.target.value)}
+                placeholder="Buscar conversas"
+                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400"
+              />
+            </label>
+
+            <div className="app-scrollbar flex-1 space-y-4 overflow-y-auto">
+              {Object.entries(filteredGroups).map(([label, group]) => (
+                <div key={label}>
+                  <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                    {label}
+                  </p>
+                  <div className="space-y-2">
+                    {group.map((thread) => (
+                      <div
+                        key={thread.id}
+                        className={cn(
+                          "group rounded-2xl border p-3 transition",
+                          thread.id === activeThread?.id
+                            ? "border-slate-900/20 bg-white text-slate-950 shadow"
+                            : "border-white/70 bg-white/55 text-slate-600 hover:bg-white/80",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openThread(thread.id);
+                            setMobileHistoryOpen(false);
+                          }}
+                          className="w-full text-left"
+                        >
+                          <span className="block truncate text-sm font-bold">
+                            {thread.title}
+                          </span>
+                          <span className="mt-1 block text-xs">
+                            {thread.messages.length} messages
+                          </span>
+                        </button>
+                        <div className="mt-2 flex items-center gap-3 text-[11px] font-bold">
+                          <button
+                            type="button"
+                            onClick={() => startRenameThread(thread.id, thread.title)}
+                            className="text-slate-400 transition hover:text-slate-700"
+                          >
+                            Renomear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => confirmDeleteThread(thread.id)}
+                            className="inline-flex items-center gap-1 text-rose-500 transition hover:text-rose-400"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <aside className="chat-surface hidden min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white/18 px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-2xl dark:border-white/10 lg:flex lg:rounded-[36px]">
         <div className="mb-4 flex items-center justify-between">

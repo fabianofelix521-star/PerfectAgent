@@ -136,6 +136,7 @@ NODE_ENV=production
 PORT=$PORT
 NEXUS_AUTH_KEY=$NEXUS_AUTH_KEY
 NEXUS_AUTH_COOKIE_SECURE=${NEXUS_AUTH_COOKIE_SECURE:-true}
+NEXUS_CORS_ORIGINS=${NEXUS_CORS_ORIGINS:-https://nexus.felixsuperclaw.com,http://192.168.0.185:3336}
 ENV
 chmod 600 '$REMOTE_DIR/shared/nexus-ultra-agi.env'
 chown root:root '$REMOTE_DIR/shared/nexus-ultra-agi.env'

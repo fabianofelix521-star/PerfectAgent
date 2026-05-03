@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import * as mammoth from "mammoth";
-import * as XLSX from "xlsx";
 import type { ProjectFile } from "@/types";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/utils/cn";
@@ -658,14 +657,19 @@ function XlsxViewer({ file }: { file: ViewerFile }) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const arrayBuffer = await resolveArrayBuffer(file);
-      const workbook = XLSX.read(arrayBuffer, { type: "array" });
-      const firstSheet = workbook.SheetNames[0] ?? "";
-      const sheet = workbook.Sheets[firstSheet];
-      const nextRows = XLSX.utils.sheet_to_json<Array<string | number>>(sheet, { header: 1 });
-      if (!cancelled) {
-        setSheetName(firstSheet);
-        setRows(nextRows);
+      try {
+        const arrayBuffer = await resolveArrayBuffer(file);
+        const parsed = await parseXlsxRows(arrayBuffer);
+        if (!cancelled) {
+          setSheetName(parsed.sheetName);
+          setRows(parsed.rows);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSheetName("");
+          setRows([]);
+        }
+        toast.error((error as Error).message);
       }
     })();
     return () => {
@@ -692,6 +696,100 @@ function XlsxViewer({ file }: { file: ViewerFile }) {
       </table>
     </div>
   );
+}
+
+async function parseXlsxRows(arrayBuffer: ArrayBuffer): Promise<{
+  sheetName: string;
+  rows: Array<Array<string | number>>;
+}> {
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const workbookXml = await zip.file("xl/workbook.xml")?.async("text");
+  const relsXml = await zip.file("xl/_rels/workbook.xml.rels")?.async("text");
+  if (!workbookXml || !relsXml) {
+    throw new Error("Arquivo XLSX inválido: workbook ausente.");
+  }
+
+  const parser = new DOMParser();
+  const workbookDoc = parser.parseFromString(workbookXml, "application/xml");
+  const relsDoc = parser.parseFromString(relsXml, "application/xml");
+  const firstSheetNode = workbookDoc.querySelector("sheet");
+  if (!firstSheetNode) {
+    return { sheetName: "Sem planilha", rows: [] };
+  }
+
+  const sheetName = firstSheetNode.getAttribute("name") || "Planilha";
+  const relationId =
+    firstSheetNode.getAttribute("r:id") ||
+    firstSheetNode.getAttribute("id") ||
+    "";
+  const relation = Array.from(relsDoc.querySelectorAll("Relationship")).find(
+    (entry) => entry.getAttribute("Id") === relationId,
+  );
+  const target = relation?.getAttribute("Target") || "worksheets/sheet1.xml";
+  const normalizedTarget = target.replace(/^\//, "");
+  const sheetPath = normalizedTarget.startsWith("xl/")
+    ? normalizedTarget
+    : `xl/${normalizedTarget}`;
+
+  const sheetXml = await zip.file(sheetPath)?.async("text");
+  if (!sheetXml) {
+    return { sheetName, rows: [] };
+  }
+
+  const sharedStringsXml = await zip.file("xl/sharedStrings.xml")?.async("text");
+  const sharedStrings = sharedStringsXml
+    ? parseSharedStrings(sharedStringsXml)
+    : [];
+
+  const sheetDoc = parser.parseFromString(sheetXml, "application/xml");
+  const outRows: Array<Array<string | number>> = [];
+
+  for (const rowNode of Array.from(sheetDoc.querySelectorAll("sheetData > row"))) {
+    const rowCells: Array<string | number> = [];
+    for (const cellNode of Array.from(rowNode.querySelectorAll("c"))) {
+      const cellRef = cellNode.getAttribute("r") || "A1";
+      const cellType = cellNode.getAttribute("t");
+      const valueNode = cellNode.querySelector("v");
+      const inlineNode = cellNode.querySelector("is > t");
+      const rawValue = valueNode?.textContent ?? inlineNode?.textContent ?? "";
+      const colIndex = columnIndexFromCellRef(cellRef);
+      while (rowCells.length < colIndex) rowCells.push("");
+
+      if (cellType === "s") {
+        const sharedIndex = Number(rawValue);
+        rowCells[colIndex] = Number.isFinite(sharedIndex)
+          ? (sharedStrings[sharedIndex] ?? "")
+          : "";
+      } else if (cellType === "b") {
+        rowCells[colIndex] = rawValue === "1" ? "TRUE" : "FALSE";
+      } else {
+        const num = Number(rawValue);
+        rowCells[colIndex] = rawValue !== "" && Number.isFinite(num) ? num : rawValue;
+      }
+    }
+    outRows.push(rowCells);
+  }
+
+  return { sheetName, rows: outRows };
+}
+
+function parseSharedStrings(xml: string): string[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, "application/xml");
+  return Array.from(doc.querySelectorAll("si")).map((entry) =>
+    Array.from(entry.querySelectorAll("t"))
+      .map((node) => node.textContent ?? "")
+      .join(""),
+  );
+}
+
+function columnIndexFromCellRef(cellRef: string): number {
+  const letters = (cellRef.match(/^[A-Z]+/i)?.[0] ?? "A").toUpperCase();
+  let index = 0;
+  for (let i = 0; i < letters.length; i += 1) {
+    index = index * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return Math.max(0, index - 1);
 }
 
 function PptxViewer({ file }: { file: ViewerFile }) {
