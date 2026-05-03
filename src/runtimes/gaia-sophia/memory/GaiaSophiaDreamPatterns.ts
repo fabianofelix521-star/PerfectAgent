@@ -1,0 +1,17 @@
+export const GaiaSophiaDreamPatterns = [
+  "gaia-sophia:dream-pattern-1",
+  "gaia-sophia:dream-pattern-2",
+  "gaia-sophia:dream-pattern-3",
+  "gaia-sophia:dream-pattern-4",
+  "gaia-sophia:dream-pattern-5",
+  "gaia-sophia:dream-pattern-6",
+  "gaia-sophia:dream-pattern-7",
+  "gaia-sophia:dream-pattern-8",
+  "gaia-sophia:dream-pattern-9",
+  "gaia-sophia:dream-pattern-10",
+  "gaia-sophia:dream-pattern-11",
+  "gaia-sophia:dream-pattern-12",
+  "gaia-sophia:dream-pattern-13",
+  "gaia-sophia:dream-pattern-14",
+  "gaia-sophia:dream-pattern-15",
+] as const;

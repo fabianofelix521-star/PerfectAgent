@@ -1,0 +1,17 @@
+export const VortexOmegaDreamPatterns = [
+  "vortex-omega:dream-pattern-1",
+  "vortex-omega:dream-pattern-2",
+  "vortex-omega:dream-pattern-3",
+  "vortex-omega:dream-pattern-4",
+  "vortex-omega:dream-pattern-5",
+  "vortex-omega:dream-pattern-6",
+  "vortex-omega:dream-pattern-7",
+  "vortex-omega:dream-pattern-8",
+  "vortex-omega:dream-pattern-9",
+  "vortex-omega:dream-pattern-10",
+  "vortex-omega:dream-pattern-11",
+  "vortex-omega:dream-pattern-12",
+  "vortex-omega:dream-pattern-13",
+  "vortex-omega:dream-pattern-14",
+  "vortex-omega:dream-pattern-15",
+] as const;

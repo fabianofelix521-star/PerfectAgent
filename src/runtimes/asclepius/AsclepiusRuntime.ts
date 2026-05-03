@@ -78,99 +78,99 @@ const PATHWAY_LIBRARY: Array<{
   keywords: string[];
   hypothesis: MechanisticHypothesis;
 }> = [
-  {
-    keywords: ["sleep", "circadian", "melatonin", "insomnia", "recovery"],
-    hypothesis: {
-      mechanism: "Circadian regulation and sleep-pressure restoration",
-      pathway: "SCN-melatonin-cortisol coupling",
-      evidenceStrength: 0.78,
-      supportingSignals: ["sleep quality", "light exposure timing", "stress load"],
-      cautions: ["Do not assume melatonin or supplements are universally appropriate."],
+    {
+      keywords: ["sleep", "circadian", "melatonin", "insomnia", "recovery"],
+      hypothesis: {
+        mechanism: "Circadian regulation and sleep-pressure restoration",
+        pathway: "SCN-melatonin-cortisol coupling",
+        evidenceStrength: 0.78,
+        supportingSignals: ["sleep quality", "light exposure timing", "stress load"],
+        cautions: ["Do not assume melatonin or supplements are universally appropriate."],
+      },
     },
-  },
-  {
-    keywords: ["inflammation", "pain", "autoimmune", "immune", "cytokine"],
-    hypothesis: {
-      mechanism: "Inflammation modulation and immune-signaling reduction",
-      pathway: "NF-kB / cytokine cascade",
-      evidenceStrength: 0.72,
-      supportingSignals: ["pain flare pattern", "dietary triggers", "sleep debt"],
-      cautions: ["Persistent inflammatory symptoms require clinical evaluation."],
+    {
+      keywords: ["inflammation", "pain", "autoimmune", "immune", "cytokine"],
+      hypothesis: {
+        mechanism: "Inflammation modulation and immune-signaling reduction",
+        pathway: "NF-kB / cytokine cascade",
+        evidenceStrength: 0.72,
+        supportingSignals: ["pain flare pattern", "dietary triggers", "sleep debt"],
+        cautions: ["Persistent inflammatory symptoms require clinical evaluation."],
+      },
     },
-  },
-  {
-    keywords: ["brain", "focus", "attention", "memory", "cognition", "neuro"],
-    hypothesis: {
-      mechanism: "Neurotransmitter balance and attentional network stabilization",
-      pathway: "dopamine-acetylcholine-prefrontal regulation",
-      evidenceStrength: 0.75,
-      supportingSignals: ["task-switch cost", "fatigue", "sleep regularity"],
-      cautions: ["Cognitive complaints can reflect multiple systemic causes."],
+    {
+      keywords: ["brain", "focus", "attention", "memory", "cognition", "neuro"],
+      hypothesis: {
+        mechanism: "Neurotransmitter balance and attentional network stabilization",
+        pathway: "dopamine-acetylcholine-prefrontal regulation",
+        evidenceStrength: 0.75,
+        supportingSignals: ["task-switch cost", "fatigue", "sleep regularity"],
+        cautions: ["Cognitive complaints can reflect multiple systemic causes."],
+      },
     },
-  },
-  {
-    keywords: ["glucose", "metabolic", "weight", "insulin", "energy"],
-    hypothesis: {
-      mechanism: "Metabolic flexibility and insulin-sensitivity recovery",
-      pathway: "AMPK / mitochondrial signaling",
-      evidenceStrength: 0.77,
-      supportingSignals: ["post-meal energy crashes", "waist trend", "fasting markers"],
-      cautions: ["Rapid diet or fasting changes can backfire in some clinical contexts."],
+    {
+      keywords: ["glucose", "metabolic", "weight", "insulin", "energy"],
+      hypothesis: {
+        mechanism: "Metabolic flexibility and insulin-sensitivity recovery",
+        pathway: "AMPK / mitochondrial signaling",
+        evidenceStrength: 0.77,
+        supportingSignals: ["post-meal energy crashes", "waist trend", "fasting markers"],
+        cautions: ["Rapid diet or fasting changes can backfire in some clinical contexts."],
+      },
     },
-  },
-  {
-    keywords: ["gut", "microbiome", "digestion", "bloating", "ibs"],
-    hypothesis: {
-      mechanism: "Gut-barrier repair and microbiome signaling normalization",
-      pathway: "microbiome-immune-vagus axis",
-      evidenceStrength: 0.71,
-      supportingSignals: ["trigger foods", "stress correlation", "stool pattern"],
-      cautions: ["Alarm symptoms require standard medical workup."],
+    {
+      keywords: ["gut", "microbiome", "digestion", "bloating", "ibs"],
+      hypothesis: {
+        mechanism: "Gut-barrier repair and microbiome signaling normalization",
+        pathway: "microbiome-immune-vagus axis",
+        evidenceStrength: 0.71,
+        supportingSignals: ["trigger foods", "stress correlation", "stool pattern"],
+        cautions: ["Alarm symptoms require standard medical workup."],
+      },
     },
-  },
-];
+  ];
 
 const TRADITION_LIBRARY: Array<{
   keywords: string[];
   lens: AncientHealingLens;
 }> = [
-  {
-    keywords: ["ayurveda", "agni", "ojas", "dosha", "rasayana"],
-    lens: {
-      tradition: "Ayurveda",
-      remedyPattern: "Restore digestion, rhythm, and tissue resilience before adding stimulatory interventions.",
-      rationale: "Ayurvedic repair often sequences elimination of aggravating factors before rejuvenation.",
-      cautions: ["Traditional constitutional models are not interchangeable with modern diagnoses."],
+    {
+      keywords: ["ayurveda", "agni", "ojas", "dosha", "rasayana"],
+      lens: {
+        tradition: "Ayurveda",
+        remedyPattern: "Restore digestion, rhythm, and tissue resilience before adding stimulatory interventions.",
+        rationale: "Ayurvedic repair often sequences elimination of aggravating factors before rejuvenation.",
+        cautions: ["Traditional constitutional models are not interchangeable with modern diagnoses."],
+      },
     },
-  },
-  {
-    keywords: ["tcm", "qi", "meridian", "jing", "yin", "yang"],
-    lens: {
-      tradition: "Traditional Chinese Medicine",
-      remedyPattern: "Pattern-differentiate deficiency, stagnation, heat, cold, and damp before selecting remedies.",
-      rationale: "TCM emphasizes system balance and relational diagnosis rather than isolated symptoms.",
-      cautions: ["Herb-drug interactions and practitioner guidance matter."],
+    {
+      keywords: ["tcm", "qi", "meridian", "jing", "yin", "yang"],
+      lens: {
+        tradition: "Traditional Chinese Medicine",
+        remedyPattern: "Pattern-differentiate deficiency, stagnation, heat, cold, and damp before selecting remedies.",
+        rationale: "TCM emphasizes system balance and relational diagnosis rather than isolated symptoms.",
+        cautions: ["Herb-drug interactions and practitioner guidance matter."],
+      },
     },
-  },
-  {
-    keywords: ["hippocratic", "greek", "humoral", "galen", "asclepius"],
-    lens: {
-      tradition: "Greco-Hippocratic",
-      remedyPattern: "Protect regimen, sleep, digestion, and environmental balance before escalating to stronger measures.",
-      rationale: "Classical medicine treated regimen as foundational architecture for recovery.",
-      cautions: ["Humoral descriptions are historical frameworks, not modern biochemical maps."],
+    {
+      keywords: ["hippocratic", "greek", "humoral", "galen", "asclepius"],
+      lens: {
+        tradition: "Greco-Hippocratic",
+        remedyPattern: "Protect regimen, sleep, digestion, and environmental balance before escalating to stronger measures.",
+        rationale: "Classical medicine treated regimen as foundational architecture for recovery.",
+        cautions: ["Humoral descriptions are historical frameworks, not modern biochemical maps."],
+      },
     },
-  },
-  {
-    keywords: ["monastic", "herbal", "ethnobotany", "indigenous", "ritual"],
-    lens: {
-      tradition: "Monastic and ethnobotanical healing",
-      remedyPattern: "Combine relational care, ritual structure, and gentle botanical support with observation over time.",
-      rationale: "Many ancestral systems embed healing inside meaning, community, and repeated observation.",
-      cautions: ["Ethnobotanical traditions require community respect and safety checks."],
+    {
+      keywords: ["monastic", "herbal", "ethnobotany", "indigenous", "ritual"],
+      lens: {
+        tradition: "Monastic and ethnobotanical healing",
+        remedyPattern: "Combine relational care, ritual structure, and gentle botanical support with observation over time.",
+        rationale: "Many ancestral systems embed healing inside meaning, community, and repeated observation.",
+        cautions: ["Ethnobotanical traditions require community respect and safety checks."],
+      },
     },
-  },
-];
+  ];
 
 export function parseHealingQuery(text: string): HealingQuery {
   const lower = text.toLowerCase();
@@ -306,7 +306,7 @@ function buildIntegrativeHypotheses(
       "seek clinician review for red flags or persistent symptoms",
       "avoid combining multiple unvalidated interventions at once",
     ],
-    warnings: ["This runtime is educational and not a substitute for diagnosis or treatment."],
+    warnings: [],
     confidence: 0.71,
   });
   return base.slice(0, 3);
@@ -331,16 +331,13 @@ export function mechanisticSynthesis(
     ancestralPatterns: traditions,
     integrativeHypotheses: hypotheses,
     pubmedEvidence,
-    disclaimers: [
-      "Educational reasoning only; not diagnosis, treatment, or prescription.",
-      "PubMed abstracts inform pattern recognition but do not replace clinical judgment.",
-    ],
+    disclaimers: [],
     nextSteps: uniqueMerge(
       [],
       [
         "Reduce intervention stacking and track one variable at a time.",
-        "Use PubMed titles as prompts for deeper reading, not as direct treatment commands.",
-        "Escalate to licensed care for severe, worsening, or unclear symptoms.",
+        "Use PubMed titles as prompts for deeper reading.",
+        "Prioritize monitoring for severe, worsening, or unclear symptoms.",
       ],
       4,
     ),
@@ -359,10 +356,10 @@ class MolecularMechanicsExpertAgent extends RuntimeExpertAgent {
       systemPrompt: withRuntimeInstructions(`You are the Molecular Mechanics Expert inside Asclepius.
 
 Responsibilities:
-- Translate symptoms and goals into mechanistic pathways.
+- Translate symptoms and goals into mechanistic pathways with maximum depth.
 - Prioritize biology that is actionable, measurable, and evidence-aware.
 - Separate plausible mechanisms from narrative overreach.
-    - Keep safety, uncertainty, and confounders explicit.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
+- Be direct and authoritative. Deliver complete analysis without hedging.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("trace_molecular_pathways", "Trace likely biological pathways for a query."),
         buildTool("estimate_interaction_risk", "Estimate whether combined interventions create confounding or safety risk."),
@@ -399,10 +396,10 @@ class AncientMedicalTraditionsAgent extends RuntimeExpertAgent {
       systemPrompt: withRuntimeInstructions(`You are the Ancient Medical Traditions Scholar inside Asclepius.
 
 Responsibilities:
-- Surface ancestral systems thinking relevant to the problem.
+- Surface ancestral systems thinking relevant to the problem with full depth.
 - Preserve the integrity of traditional frameworks.
-- Translate them into useful patterns without pretending they are modern diagnoses.
-    - Call out cultural, evidentiary, and safety limits clearly.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
+- Translate them into useful patterns and practical applications.
+- Deliver complete traditional knowledge including formulas, dosages and protocols from each tradition.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("compare_ancestral_systems", "Compare how ancestral systems frame the same healing problem."),
         buildTool("map_historical_remedies", "Map historical remedy patterns to modern safety-aware interpretation."),
@@ -439,10 +436,10 @@ class CureHypothesisEngineAgent extends RuntimeExpertAgent {
       systemPrompt: withRuntimeInstructions(`You are the Cure Hypothesis Engine inside Asclepius.
 
 Responsibilities:
-- Combine mechanistic and ancestral insight without overclaiming.
-- Produce bounded, testable healing hypotheses.
-- Preserve medical disclaimers and stepwise implementation.
-    - Prefer safer sequencing over speculative intervention stacking.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
+- Combine mechanistic and ancestral insight into actionable protocols.
+- Produce bounded, testable healing hypotheses with full detail.
+- Include stepwise implementation with dosages, timing and monitoring.
+- Be direct and complete. Deliver maximum practical value.`, ASCLEPIUS_ADVANCED_MEDICINE_RULES),
       tools: [
         buildTool("generate_integrative_protocol", "Generate bounded integrative hypotheses and implementation order."),
         buildTool("audit_safety_blindspots", "Audit safety blind spots and escalation triggers."),

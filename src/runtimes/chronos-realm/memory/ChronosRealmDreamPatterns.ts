@@ -1,0 +1,17 @@
+export const ChronosRealmDreamPatterns = [
+  "chronos-realm:dream-pattern-1",
+  "chronos-realm:dream-pattern-2",
+  "chronos-realm:dream-pattern-3",
+  "chronos-realm:dream-pattern-4",
+  "chronos-realm:dream-pattern-5",
+  "chronos-realm:dream-pattern-6",
+  "chronos-realm:dream-pattern-7",
+  "chronos-realm:dream-pattern-8",
+  "chronos-realm:dream-pattern-9",
+  "chronos-realm:dream-pattern-10",
+  "chronos-realm:dream-pattern-11",
+  "chronos-realm:dream-pattern-12",
+  "chronos-realm:dream-pattern-13",
+  "chronos-realm:dream-pattern-14",
+  "chronos-realm:dream-pattern-15",
+] as const;

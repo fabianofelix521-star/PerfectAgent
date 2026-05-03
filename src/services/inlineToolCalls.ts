@@ -11,9 +11,10 @@ interface InlineToolCall {
 export async function executeInlineToolCalls(content: string): Promise<{
   content: string;
   executed: number;
+  toolResultsMarkdown: string;
 }> {
   const calls = parseInlineToolCalls(content);
-  if (!calls.length) return { content, executed: 0 };
+  if (!calls.length) return { content, executed: 0, toolResultsMarkdown: "" };
 
   const results: string[] = [];
   for (const call of calls.slice(0, 4)) {
@@ -39,14 +40,15 @@ export async function executeInlineToolCalls(content: string): Promise<{
     );
   }
 
-  const cleaned = content.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "").trim();
+  const toolResultsMarkdown = [
+    "## Resultados das ferramentas executadas",
+    ...results,
+  ].filter(Boolean).join("\n\n");
+  const cleaned = stripToolCallBlocks(content);
   return {
-    content: [
-      cleaned,
-      "## Resultados das ferramentas executadas",
-      ...results,
-    ].filter(Boolean).join("\n\n"),
+    content: [cleaned, toolResultsMarkdown].filter(Boolean).join("\n\n"),
     executed: results.length,
+    toolResultsMarkdown,
   };
 }
 
@@ -102,4 +104,13 @@ function decodeInlineValue(value: string): unknown {
     }
   }
   return value;
+}
+
+function stripToolCallBlocks(content: string): string {
+  return content
+    .replace(/```[a-z0-9_-]*\s*\n?[\s\S]*?<tool_call>[\s\S]*?<\/tool_call>[\s\S]*?```/gi, "")
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+    .replace(/^\s*```(?:javascript|js|json|typescript|ts)?\s*```\s*$/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

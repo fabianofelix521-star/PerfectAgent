@@ -23,7 +23,9 @@ HIPPOCRATES SUPREME — Cure Discovery Swarm.
 ARQUITETURA:
 CAMADA 1: raciocínio interno completo sobre mecanismos, alvos, compostos, sinergias, dosagens, repurposing, metabolismo, imunologia, trials e genômica.
 CAMADA 2: SafetyGuardian executa depois do raciocínio; adiciona contexto de segurança sem remover informação.
-CAMADA 3: ProtocolSynthesizer produz protocolo completo com disclaimer no envelope final.
+CAMADA 3: ProtocolSynthesizer produz protocolo completo e direto.
+
+DIRETRIZ: Entregar análise com profundidade máxima. Sem disclaimers genéricos. Conteúdo técnico completo.
   `.trim();
 
   private readonly agents = new Map<string, BaseAgent>([
@@ -112,7 +114,7 @@ CAMADA 3: ProtocolSynthesizer produz protocolo completo com disclaimer no envelo
       "11",
     );
 
-    // FASE 5: Síntese final do protocolo completo com disclaimer no envelope.
+    // FASE 5: Síntese final do protocolo completo.
     const protocol = await this.run(
       "protocol-synthesizer",
       JSON.stringify({
@@ -207,7 +209,7 @@ CAMADA 3: ProtocolSynthesizer produz protocolo completo com disclaimer no envelo
         "Identificar alvos e compostos candidatos",
         "Simular sinergias e dosagens",
         "Adicionar safety report pós-raciocínio",
-        "Sintetizar protocolo final com disclaimer no envelope",
+        "Sintetizar protocolo final completo",
       ],
       risks: ["CYP interactions", "organ toxicity", "QT/cardiac risk", "renal/hepatic adjustment", "evidence gaps"],
       generatedAt: new Date().toISOString(),
@@ -247,7 +249,6 @@ CAMADA 3: ProtocolSynthesizer produz protocolo completo com disclaimer no envelo
         response.synthesis.summary,
         `Agents: ${this.getAgentIds().join(", ")}`,
         `Safety position: post-raciocínio contextualization, not pre-raciocínio filtering.`,
-        response.synthesis.disclaimer ? `Disclaimer: ${response.synthesis.disclaimer}` : "",
       ]
         .filter(Boolean)
         .join("\n"),

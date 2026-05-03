@@ -23,6 +23,7 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 3336);
 const DEFAULT_DEV_AUTH_KEY = "pa-local-dev-key";
 const API_AUTH_KEY = process.env.NEXUS_AUTH_KEY ?? process.env.APP_AUTH_KEY ?? "";
+const NEXUS_CORS_ORIGINS = process.env.NEXUS_CORS_ORIGINS ?? "";
 const AUTH_COOKIE_NAME = "nexus_auth";
 const AUTH_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const AUTH_COOKIE_SECURE = process.env.NEXUS_AUTH_COOKIE_SECURE === "true";
@@ -47,7 +48,61 @@ function loadLangGraph(): Promise<LangGraphModule> {
   return langGraphModulePromise;
 }
 
-app.use(cors({ origin: true }));
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function parseCorsOrigins(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((item) => normalizeOrigin(item))
+    .filter(Boolean);
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
+function inferRequestOrigin(req: express.Request): string {
+  const forwardedProto = req
+    .header("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+  const forwardedHost = req
+    .header("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+  const host = forwardedHost || req.header("host") || "";
+  const proto = forwardedProto || (req.secure ? "https" : "http");
+  return host ? normalizeOrigin(`${proto}://${host}`) : "";
+}
+
+const EXPLICIT_CORS_ORIGINS = parseCorsOrigins(NEXUS_CORS_ORIGINS);
+
+app.use(
+  cors((req, callback) => {
+    const requestOrigin = req.header("origin");
+    if (!requestOrigin) {
+      callback(null, { origin: false });
+      return;
+    }
+
+    const normalizedOrigin = normalizeOrigin(requestOrigin);
+    const sameOrigin = normalizedOrigin === inferRequestOrigin(req);
+    const devLoopback = process.env.NODE_ENV !== "production" && isLoopbackOrigin(normalizedOrigin);
+    const explicitlyAllowed = EXPLICIT_CORS_ORIGINS.includes(normalizedOrigin);
+    const allowOrigin = EXPLICIT_CORS_ORIGINS.length > 0
+      ? explicitlyAllowed
+      : (sameOrigin || devLoopback);
+
+    callback(null, {
+      origin: allowOrigin ? requestOrigin : false,
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["content-type", "authorization", "x-api-key", "x-nexus-auth"],
+    });
+  }),
+);
 // Cross-origin isolation is required by WebContainer (SharedArrayBuffer).
 // In dev the Vite server sets COOP/COEP for the frontend, while this backend
 // still needs CORP so the isolated page can consume API responses on :3336.
@@ -1259,49 +1314,8 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
         throw new Error("only arithmetic allowed");
       return new Function(`return (${expr});`)();
     }
-    case "websearch": {
-      const queryPrefix = String(a.queryPrefix ?? "").trim();
-      const site = String(a.site ?? "").trim();
-      const baseQuery = String(a.query ?? "");
-      const q = [queryPrefix, baseQuery, site ? `site:${site}` : ""]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      if (!q) throw new Error("missing query");
-      const maxResults = Math.max(
-        1,
-        Math.min(20, Number(a.maxResults ?? 8) || 8),
-      );
-      const r = await fetch(
-        `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
-        {
-          headers: { "user-agent": "Mozilla/5.0 PerfectAgent" },
-        },
-      );
-      const html = await r.text();
-      const results: Array<{ title: string; url: string; snippet: string }> =
-        [];
-      const re =
-        /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(html)) && results.length < maxResults) {
-        results.push({
-          url: decodeDuckDuckGoUrl(m[1]),
-          title: stripTags(m[2]),
-          snippet: stripTags(m[3]),
-        });
-      }
-      return {
-        query: q,
-        requestedQuery: baseQuery,
-        stack: [
-          "karpathy/autoresearch",
-          "AutoResearchClaw",
-          "open-webSearch",
-        ],
-        results,
-      };
-    }
+    case "websearch":
+      return runWebSearchTool(a);
     case "fs": {
       const fs = await import("node:fs/promises");
       const p = String(a.path ?? "");
@@ -1325,6 +1339,314 @@ async function runTool(body: ToolRunRequest): Promise<unknown> {
     }
   }
   throw new Error(`unknown kind: ${body.kind}`);
+}
+
+interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+  publishedAt?: string;
+}
+
+async function runWebSearchTool(a: Record<string, unknown>): Promise<unknown> {
+  const queryPrefix = String(a.queryPrefix ?? "").trim();
+  const site = String(a.site ?? "").trim();
+  const baseQuery = String(a.query ?? "");
+  const q = [queryPrefix, baseQuery, site ? `site:${site}` : ""]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (!q) throw new Error("missing query");
+
+  const maxResults = Math.max(
+    1,
+    Math.min(24, Number(a.maxResults ?? 8) || 8),
+  );
+  const plainQuery = loosenSearchQuery(q);
+  const medical = hasMedicalResearchIntent(q);
+  const recent = hasRecentResearchIntent(q);
+  const sourceRuns: Array<Promise<WebSearchResult[]>> = [
+    searchDuckDuckGo(q, maxResults),
+  ];
+
+  if (medical) {
+    sourceRuns.push(
+      searchPubMed(plainQuery, maxResults, recent),
+      searchClinicalTrials(plainQuery, Math.min(maxResults, 8)),
+      searchOpenAlex(plainQuery, Math.min(maxResults, 8), recent),
+      searchCrossref(plainQuery, Math.min(maxResults, 8), recent),
+    );
+  } else if (recent) {
+    sourceRuns.push(
+      searchOpenAlex(plainQuery, Math.min(maxResults, 6), true),
+      searchCrossref(plainQuery, Math.min(maxResults, 6), true),
+    );
+  }
+
+  const settled = await Promise.allSettled(sourceRuns);
+  const results = dedupeSearchResults(
+    settled.flatMap((item) =>
+      item.status === "fulfilled" ? item.value : [],
+    ),
+  ).slice(0, maxResults);
+
+  return {
+    query: q,
+    requestedQuery: baseQuery,
+    normalizedQuery: plainQuery,
+    stack: [
+      "karpathy/autoresearch",
+      "AutoResearchClaw",
+      "open-webSearch",
+      ...(medical
+        ? ["OpenClaw-Medical-Skills", "PubMed", "ClinicalTrials.gov", "OpenAlex", "Crossref"]
+        : recent
+          ? ["OpenAlex", "Crossref"]
+          : []),
+    ],
+    results,
+  };
+}
+
+async function searchDuckDuckGo(
+  query: string,
+  maxResults: number,
+): Promise<WebSearchResult[]> {
+  const r = await fetch(
+    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    {
+      headers: { "user-agent": "Mozilla/5.0 PerfectAgent" },
+    },
+  );
+  const html = await r.text();
+  const results: WebSearchResult[] = [];
+  const re =
+    /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && results.length < maxResults) {
+    results.push({
+      url: decodeDuckDuckGoUrl(m[1]),
+      title: stripTags(m[2]),
+      snippet: stripTags(m[3]),
+      source: "DuckDuckGo",
+    });
+  }
+  return results;
+}
+
+async function searchPubMed(
+  query: string,
+  maxResults: number,
+  recent: boolean,
+): Promise<WebSearchResult[]> {
+  const term = recent ? `${query} AND 2024:2026[dp]` : query;
+  const searchUrl =
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi" +
+    `?db=pubmed&sort=relevance&retmode=json&retmax=${maxResults}` +
+    `&term=${encodeURIComponent(term)}`;
+  const search = await fetchJsonUrl(searchUrl);
+  const searchRecord = isRecord(search.esearchresult)
+    ? search.esearchresult
+    : {};
+  const ids = Array.isArray(searchRecord.idlist)
+    ? searchRecord.idlist.map(String).filter(Boolean)
+    : [];
+  if (!ids.length && recent) return searchPubMed(query, maxResults, false);
+  if (!ids.length) return [];
+
+  const summary = await fetchJsonUrl(
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi" +
+      `?db=pubmed&retmode=json&id=${ids.join(",")}`,
+  );
+  const result = isRecord(summary.result) ? summary.result : {};
+  return Object.values(result)
+    .filter(isRecord)
+    .filter((paper) => typeof paper.uid === "string")
+    .map((paper) => {
+      const authors = Array.isArray(paper.authors)
+        ? paper.authors
+            .filter(isRecord)
+            .slice(0, 3)
+            .map((author) => String(author.name ?? ""))
+            .filter(Boolean)
+        : [];
+      const uid = String(paper.uid);
+      const journal = typeof paper.fulljournalname === "string"
+        ? paper.fulljournalname
+        : "";
+      const date = typeof paper.pubdate === "string" ? paper.pubdate : "";
+      return {
+        title: String(paper.title ?? "PubMed result"),
+        url: `https://pubmed.ncbi.nlm.nih.gov/${uid}/`,
+        snippet: [authors.join(", "), journal, date].filter(Boolean).join(" · "),
+        source: "PubMed",
+        publishedAt: date,
+      };
+    });
+}
+
+async function searchClinicalTrials(
+  query: string,
+  maxResults: number,
+): Promise<WebSearchResult[]> {
+  const url = new URL("https://clinicaltrials.gov/api/v2/studies");
+  url.searchParams.set("query.term", query);
+  url.searchParams.set("pageSize", String(maxResults));
+  const data = await fetchJsonUrl(url.toString());
+  const studies = Array.isArray(data.studies) ? data.studies.filter(isRecord) : [];
+  return studies.map((study) => {
+    const protocol = isRecord(study.protocolSection)
+      ? study.protocolSection
+      : {};
+    const identification = isRecord(protocol.identificationModule)
+      ? protocol.identificationModule
+      : {};
+    const status = isRecord(protocol.statusModule)
+      ? protocol.statusModule
+      : {};
+    const nctId = String(identification.nctId ?? "");
+    const title = String(
+      identification.briefTitle ?? identification.officialTitle ?? "Clinical trial",
+    );
+    return {
+      title,
+      url: nctId
+        ? `https://clinicaltrials.gov/study/${nctId}`
+        : "https://clinicaltrials.gov/",
+      snippet: [
+        nctId,
+        typeof status.overallStatus === "string" ? status.overallStatus : "",
+        typeof status.startDateStruct === "object" && status.startDateStruct
+          ? JSON.stringify(status.startDateStruct)
+          : "",
+      ].filter(Boolean).join(" · "),
+      source: "ClinicalTrials.gov",
+    };
+  });
+}
+
+async function searchOpenAlex(
+  query: string,
+  maxResults: number,
+  recent: boolean,
+): Promise<WebSearchResult[]> {
+  const url = new URL("https://api.openalex.org/works");
+  url.searchParams.set("search", query);
+  url.searchParams.set("per-page", String(maxResults));
+  if (recent) {
+    url.searchParams.set(
+      "filter",
+      "from_publication_date:2024-01-01,to_publication_date:2026-12-31",
+    );
+  }
+  const data = await fetchJsonUrl(url.toString());
+  const works = Array.isArray(data.results) ? data.results.filter(isRecord) : [];
+  return works.map((work) => ({
+    title: String(work.title ?? work.display_name ?? "OpenAlex work"),
+    url: typeof work.doi === "string"
+      ? `https://doi.org/${work.doi.replace(/^https?:\/\/doi\.org\//, "")}`
+      : String(work.id ?? "https://openalex.org"),
+    snippet: [
+      typeof work.publication_year === "number" ? String(work.publication_year) : "",
+      typeof work.type === "string" ? work.type : "",
+      typeof work.cited_by_count === "number" ? `${work.cited_by_count} citations` : "",
+    ].filter(Boolean).join(" · "),
+    source: "OpenAlex",
+    publishedAt: typeof work.publication_date === "string" ? work.publication_date : undefined,
+  }));
+}
+
+async function searchCrossref(
+  query: string,
+  maxResults: number,
+  recent: boolean,
+): Promise<WebSearchResult[]> {
+  const url = new URL("https://api.crossref.org/works");
+  url.searchParams.set("query", query);
+  url.searchParams.set("rows", String(maxResults));
+  if (recent) {
+    url.searchParams.set(
+      "filter",
+      "from-pub-date:2024-01-01,until-pub-date:2026-12-31",
+    );
+  }
+  const data = await fetchJsonUrl(url.toString());
+  const message = isRecord(data.message) ? data.message : {};
+  const items = Array.isArray(message.items) ? message.items.filter(isRecord) : [];
+  return items.map((item) => {
+    const title = Array.isArray(item.title) ? String(item.title[0] ?? "") : "";
+    const doi = typeof item.DOI === "string" ? item.DOI : "";
+    const published = isRecord(item.published)
+      ? item.published
+      : isRecord(item["published-print"])
+        ? item["published-print"]
+        : isRecord(item["published-online"])
+          ? item["published-online"]
+          : {};
+    const dateParts = Array.isArray(published["date-parts"])
+      ? published["date-parts"]
+      : [];
+    const date = Array.isArray(dateParts[0])
+      ? dateParts[0].map(String).join("-")
+      : "";
+    return {
+      title: title || "Crossref work",
+      url: doi ? `https://doi.org/${doi}` : String(item.URL ?? "https://crossref.org"),
+      snippet: [
+        Array.isArray(item["container-title"]) ? String(item["container-title"][0] ?? "") : "",
+        date,
+        typeof item.type === "string" ? item.type : "",
+      ].filter(Boolean).join(" · "),
+      source: "Crossref",
+      publishedAt: date || undefined,
+    };
+  });
+}
+
+async function fetchJsonUrl(url: string): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "NexusUltraAGI/1.0 (local research tool)",
+      accept: "application/json",
+    },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  const data = await response.json();
+  return isRecord(data) ? data : {};
+}
+
+function dedupeSearchResults(results: WebSearchResult[]): WebSearchResult[] {
+  const seen = new Set<string>();
+  const deduped: WebSearchResult[] = [];
+  for (const result of results) {
+    const key = normalizeSearchKey(result.url || result.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(result);
+  }
+  return deduped;
+}
+
+function normalizeSearchKey(value: string): string {
+  return value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
+function loosenSearchQuery(query: string): string {
+  return query
+    .replace(/\bsite:\S+/gi, "")
+    .replace(/[“”"]/g, "")
+    .replace(/\b(19|20)\d{2}\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasRecentResearchIntent(query: string): boolean {
+  return /\b(2024|2025|2026|recent|latest|new|novo|novos|atual|atuais|recente|recentes)\b/i.test(query);
+}
+
+function hasMedicalResearchIntent(query: string): boolean {
+  return /\b(pubmed|clinical|trial|randomized|rct|meta-analysis|medicine|medical|biomedical|drug|dose|dosage|treatment|cancer|tumor|compound|sleep|cortisol|human|elderly|neuroprotection|amyloid|l-theanine|theanine|hippocrates|asclepius|apollo|openc?law medical|medicina|ensaio|estudo|paciente|doenca|doença|tratamento|farmaco|fármaco|composto)\b/i.test(query);
 }
 
 async function runShellTool(a: Record<string, unknown>): Promise<unknown> {

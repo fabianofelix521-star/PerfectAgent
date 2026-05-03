@@ -5,6 +5,7 @@ import { WorkspaceShell, Surface, HeaderAction, Modal, EditableField, SelectCont
 import type { Integration } from "@/types";
 import { api } from "@/services/api";
 import { toast } from "@/components/Toast";
+import { TELEGRAM_BOT_COMMANDS } from "@/modules/integrations/integrations/TelegramIntegration";
 
 function rid() { return `in-${Math.random().toString(36).slice(2, 9)}`; }
 
@@ -78,7 +79,7 @@ export function IntegrationsPage() {
       action={<HeaderAction icon={Plus} label="Nova integração" onClick={() => setCreating(true)} />}
     >
       <Surface>
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold text-slate-950">Conexões configuradas</h2>
             <p className="mt-1 text-xs font-medium text-slate-500">
@@ -98,16 +99,16 @@ export function IntegrationsPage() {
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
             {integrations.map((i) => (
-            <div key={i.id} className="rounded-3xl border border-white/70 bg-white/60 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <div key={i.id} className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#17172d] text-white"><Plug className="h-5 w-5" /></span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{i.name}</h3>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 break-words text-sm font-semibold text-slate-950 sm:text-base">{i.name}</h3>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">{i.kind}</span>
                     </div>
-                    <p className="mt-1 truncate font-mono text-[11px] text-slate-500">{i.method ?? "POST"} {i.url ?? "—"}</p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{i.method ?? "POST"} {i.url ?? "—"}</p>
                   </div>
                 </div>
                 <StatusBadge status={i.connected ? "Conectado" : "Pronto"} />
@@ -120,7 +121,21 @@ export function IntegrationsPage() {
                   </span>
                 </div>
               )}
-              <div className="mt-3 flex justify-end gap-2">
+              {i.kind === "telegram" ? (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Bot commands</p>
+                  <div className="mt-2 grid gap-1">
+                    {TELEGRAM_BOT_COMMANDS.map((item) => (
+                      <p key={item.command} className="text-xs font-medium text-slate-600">
+                        <span className="font-mono font-bold text-slate-800">{item.command}</span>
+                        {" - "}
+                        {item.description}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
                 <button onClick={() => test(i.id)} disabled={testingId === i.id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                   {testingId === i.id ? <Spinner size={12} /> : <Send className="h-3 w-3" />} Testar
                 </button>
@@ -148,11 +163,11 @@ export function IntegrationsPage() {
           {KIND_PRESETS.map((preset) => {
             const installed = installedKinds.has(preset.value);
             return (
-              <div key={preset.value} className="rounded-3xl border border-white/70 bg-white/60 p-4">
+              <div key={preset.value} className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-950">{preset.label}</h3>
-                    <p className="mt-1 font-mono text-[11px] text-slate-500">
+                    <p className="mt-1 break-all font-mono text-[11px] text-slate-500">
                       {preset.defaults.method ?? "POST"} {preset.defaults.url ?? "URL configurável"}
                     </p>
                   </div>

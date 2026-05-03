@@ -109,20 +109,20 @@ export function LoginPage() {
 
   return (
     <div className="glass-shell relative flex h-[97vh] w-full max-w-[98vw] items-center justify-center overflow-hidden rounded-[28px] border border-white/60 bg-white/45 p-3 shadow-[0_42px_130px_rgba(69,78,133,0.34)] backdrop-blur-3xl lg:h-[98vh] lg:rounded-[40px] lg:p-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(23,23,45,0.12),transparent_38%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(23,23,45,0.14),transparent_38%)]" />
       <motion.section
         initial={{ opacity: 0, y: 22, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="fx-card relative grid w-full max-w-5xl gap-4 rounded-[28px] border border-white/80 bg-white/72 p-4 shadow-[0_24px_80px_rgba(69,78,133,0.2)] backdrop-blur-2xl lg:grid-cols-[1.2fr_0.9fr] lg:p-6"
       >
-        <div className="rounded-[24px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(234,239,251,0.82))] p-5 lg:p-7">
+        <div className="rounded-[24px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,242,252,0.86))] p-5 lg:p-7">
           <BrandLockup compact iconSize={48} caption="Protected control surface" className="w-fit" />
-          <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
-            Login por chave
+          <p className="mt-6 text-sm font-semibold text-slate-500">
+            Login seguro por chave
           </p>
-          <h1 className="mt-3 max-w-xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-            Entre com a key do servidor para destravar o app.
+          <h1 className="mt-2 max-w-xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+            Entre com a chave do servidor
           </h1>
           <p className="mt-3 max-w-2xl text-sm font-medium leading-7 text-slate-600 sm:text-base">
             Quando a API estiver protegida por <span className="font-semibold text-slate-950">NEXUS_AUTH_KEY</span>,
@@ -131,9 +131,9 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <label className="block rounded-[20px] border border-white/80 bg-white/88 px-4 py-3 shadow-sm transition focus-within:border-[#17172d]/35 focus-within:bg-white">
-              <span className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+              <span className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
                 <KeyRound className="h-4 w-4" />
-                Access key
+                Chave de acesso
               </span>
               <input
                 autoFocus
@@ -177,12 +177,12 @@ export function LoginPage() {
           <div className="rounded-[24px] border border-white/80 bg-white/82 p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Backend</p>
+                <p className="text-sm font-semibold text-slate-500">Backend</p>
                 <p className="mt-2 break-all text-sm font-semibold text-slate-900">{API_BASE}</p>
               </div>
               <span
                 className={cn(
-                  "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em]",
+                  "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold",
                   backendState === "online"
                     ? "bg-emerald-100 text-emerald-700"
                     : backendState === "offline"
@@ -205,7 +205,7 @@ export function LoginPage() {
           </div>
 
           <div className="rounded-[24px] border border-white/80 bg-[linear-gradient(180deg,rgba(23,23,45,0.96),rgba(36,40,54,0.94))] p-5 text-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.22)]">
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-cyan-200/75">Como funciona</p>
+            <p className="text-sm font-semibold text-cyan-200/85">Como funciona</p>
             <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-200/90">
               <li>1. Digite a mesma key definida no servidor remoto.</li>
               <li>2. O servidor valida a chave em <span className="font-mono text-cyan-100">/api/auth/login</span> e grava uma sessão segura.</li>

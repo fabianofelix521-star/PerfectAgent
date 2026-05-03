@@ -1,45 +1,26 @@
 import type { RuntimeKind } from "@/types";
-import { AsclepiusRuntime } from "@/runtimes/asclepius/AsclepiusRuntime";
-import { clinicalCaseFromText, ApolloRuntime } from "@/runtimes/apollo/ApolloRuntime";
-import { AthenaRuntime, researchQueryFromText } from "@/runtimes/athena/AthenaRuntime";
-import { marketingBriefFromText, HermesRuntime } from "@/runtimes/hermes/HermesRuntime";
-import { LogosRuntime } from "@/runtimes/logos/LogosRuntime";
-import { MorpheusRuntime } from "@/runtimes/morpheus/MorpheusRuntime";
-import { OracleRuntime, strategicContextFromText } from "@/runtimes/oracle/OracleRuntime";
-import { PrometheusMindRuntime } from "@/runtimes/prometheus-mind/PrometheusNindRuntime";
-import {
-  marketTextToPrometheusData,
-  PrometheusRuntime,
-} from "@/runtimes/prometheus/PrometheusRuntime";
-import { SophiaRuntime } from "@/runtimes/sophia/SophiaRuntime";
-import { codeDiffFromText, VulcanRuntime } from "@/runtimes/vulcan/VulcanRuntime";
-import { NexusAGIBorderSystem } from "@/runtimes/nexus-prime/NexusPrimeRuntime";
-import { HippocratesSupremeRuntime } from "@/runtimes/hippocrates-supreme/HippocratesSupremeRuntime";
-import { MendeleevRuntime } from "@/runtimes/mendeleev/MendeleevRuntime";
-import { PromptForgeRuntime } from "@/runtimes/prompt-forge/PromptForgeRuntime";
-import { SiliconValleyRuntime } from "@/runtimes/silicon-valley/SiliconValleyRuntime";
-import { UnrealForgeRuntime } from "@/runtimes/unreal-forge/UnrealForgeRuntime";
-import { AegisRuntime } from "@/runtimes/aegis/AegisRuntime";
-import { ContentEmpireRuntime } from "@/runtimes/content-empire/ContentEmpireRuntime";
-import { AdCommanderRuntime } from "@/runtimes/ad-commander/AdCommanderRuntime";
-import { StudioOneRuntime } from "@/runtimes/studio-one/StudioOneRuntime";
-import { WallStreetRuntime } from "@/runtimes/wall-street/WallStreetRuntime";
-import { PixelForgeRuntime } from "@/runtimes/pixel-forge/PixelForgeRuntime";
-import type { SupremeRuntimeResponse } from "@/runtimes/shared/supremeRuntime";
 import { calibrateAnalysisConfidence } from "@/runtimes/shared/confidenceCalibration";
 import {
   APOLLO_BAYESIAN_REASONING_RULE,
+  AETHER_WORLD_FORGE_RULES,
+  AMBROSIA_NUTRITION_RULES,
   ASCLEPIUS_ADVANCED_MEDICINE_RULES,
+  ASCLEPIUS_NEXTGEN_RULES,
   ATHENA_RESEARCH_RULES,
   CONFIDENCE_CALIBRATION_RULE,
+  CORTEX_NEURO_RULES,
   GLOBAL_CITATION_RULE,
   HERMES_PRICING_STRATEGY_RULE,
+  HERMES_MEMETICS_RULES,
   LOGOS_PHILOSOPHY_RULES,
+  MIDAS_PAPER_TRADING_RULES,
   MORPHEUS_PRODUCTION_FEASIBILITY_RULE,
   NEXUS_PRIME_PARLIAMENT_RULES,
+  ORACLE_SYMBOLIC_RULES,
   ORACLE_STRATEGY_RULES,
   PROMETHEUS_MIND_RULES,
   PROMETHEUS_ON_CHAIN_FORENSICS_RULE,
+  QUANTUM_ALGORITHM_RULES,
   SOPHIA_SPIRITUAL_RULES,
   VULCAN_ARCHITECTURE_RULES,
   withRuntimeInstructions,
@@ -76,6 +57,24 @@ export const COGNITIVE_RUNTIME_KINDS = new Set<RuntimeKind>([
   "studio-one",
   "wall-street",
   "pixel-forge",
+  "aether",
+  "ambrosia",
+  "quantum",
+  "cortex",
+  "midas",
+  "asclepius-nextgen",
+  "hermes-memetics",
+  "oracle-symbolic",
+  "aetherion",
+  "elysium",
+  "panacea",
+  "amrita",
+  "akasha",
+  "noumenon",
+  "mnemosyne",
+  "peitho",
+  "leviathan",
+  "pleroma",
 ]);
 
 function runtimeInstructionsFor(kind: RuntimeKind): string {
@@ -92,6 +91,24 @@ function runtimeInstructionsFor(kind: RuntimeKind): string {
     logos: LOGOS_PHILOSOPHY_RULES,
     "prometheus-mind": PROMETHEUS_MIND_RULES,
     "nexus-prime": NEXUS_PRIME_PARLIAMENT_RULES,
+    aether: AETHER_WORLD_FORGE_RULES,
+    ambrosia: AMBROSIA_NUTRITION_RULES,
+    quantum: QUANTUM_ALGORITHM_RULES,
+    cortex: CORTEX_NEURO_RULES,
+    midas: MIDAS_PAPER_TRADING_RULES,
+    "asclepius-nextgen": ASCLEPIUS_NEXTGEN_RULES,
+    "hermes-memetics": HERMES_MEMETICS_RULES,
+    "oracle-symbolic": ORACLE_SYMBOLIC_RULES,
+    aetherion: VULCAN_ARCHITECTURE_RULES,
+    elysium: AETHER_WORLD_FORGE_RULES,
+    panacea: ASCLEPIUS_ADVANCED_MEDICINE_RULES,
+    amrita: AMBROSIA_NUTRITION_RULES,
+    akasha: SOPHIA_SPIRITUAL_RULES,
+    noumenon: QUANTUM_ALGORITHM_RULES,
+    mnemosyne: PROMETHEUS_MIND_RULES,
+    peitho: HERMES_MEMETICS_RULES,
+    leviathan: MIDAS_PAPER_TRADING_RULES,
+    pleroma: NEXUS_PRIME_PARLIAMENT_RULES,
   };
   return withRuntimeInstructions(
     GLOBAL_CITATION_RULE,
@@ -106,7 +123,7 @@ function analysisQualityConfidence(result: unknown, fallback: number, floor = 0.
 
 async function buildSupremeRuntimeContext(
   kind: RuntimeKind,
-  runtime: { buildContext: (query: string) => Promise<{ label: string; context: string; confidence: number; evidence: string[]; response: SupremeRuntimeResponse }> },
+  runtime: { buildContext: (query: string) => Promise<{ label: string; context: string; confidence: number; evidence: string[]; response: unknown }> },
   prompt: string,
 ): Promise<CognitiveRuntimeContext> {
   const built = await runtime.buildContext(prompt);
@@ -129,6 +146,7 @@ export async function buildCognitiveRuntimeContext(
 ): Promise<CognitiveRuntimeContext | undefined> {
   switch (kind) {
     case "prometheus": {
+      const { PrometheusRuntime, marketTextToPrometheusData } = await import("@/runtimes/prometheus/PrometheusRuntime");
       const runtime = new PrometheusRuntime();
       const consensus = await runtime.process(marketTextToPrometheusData(prompt));
       const top = consensus[0];
@@ -153,6 +171,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "morpheus-creative": {
+      const { MorpheusRuntime } = await import("@/runtimes/morpheus/MorpheusRuntime");
       const runtime = new MorpheusRuntime();
       const works = await runtime.createProjectVision(prompt);
       const confidence = analysisQualityConfidence(
@@ -177,6 +196,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "apollo": {
+      const { ApolloRuntime, clinicalCaseFromText } = await import("@/runtimes/apollo/ApolloRuntime");
       const runtime = new ApolloRuntime();
       const report = await runtime.diagnose(clinicalCaseFromText(prompt));
       const confidence = analysisQualityConfidence(report, report.primaryDiagnosis?.confidence ?? 0.35, report.primaryDiagnosis ? 0.88 : 0.5);
@@ -198,6 +218,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "hermes": {
+      const { HermesRuntime, marketingBriefFromText } = await import("@/runtimes/hermes/HermesRuntime");
       const runtime = new HermesRuntime();
       const campaign = await runtime.createCampaign(marketingBriefFromText(prompt));
       const confidence = analysisQualityConfidence(campaign, campaign.prediction.resonanceScore, 0.79);
@@ -217,6 +238,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "athena": {
+      const { AthenaRuntime, researchQueryFromText } = await import("@/runtimes/athena/AthenaRuntime");
       const runtime = new AthenaRuntime();
       const report = await runtime.research(researchQueryFromText(prompt));
       const confidence = analysisQualityConfidence(report, report.confidence, report.claims.length ? 0.9 : 0.5);
@@ -235,6 +257,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "vulcan": {
+      const { VulcanRuntime, codeDiffFromText } = await import("@/runtimes/vulcan/VulcanRuntime");
       const runtime = new VulcanRuntime();
       const review = await runtime.handleNewCode(codeDiffFromText(prompt));
       const confidence = analysisQualityConfidence(review, review.score, 0.86);
@@ -253,6 +276,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "oracle": {
+      const { OracleRuntime, strategicContextFromText } = await import("@/runtimes/oracle/OracleRuntime");
       const runtime = new OracleRuntime();
       const report = await runtime.analyzeStrategicSituation(strategicContextFromText(prompt));
       const confidence = analysisQualityConfidence(report, report.confidence, report.scenarios.length ? 0.83 : 0.5);
@@ -271,6 +295,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "sophia": {
+      const { SophiaRuntime } = await import("@/runtimes/sophia/SophiaRuntime");
       const response = await new SophiaRuntime().process(prompt);
       const synthesis = (response.result as {
         synthesis: {
@@ -299,6 +324,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "asclepius": {
+      const { AsclepiusRuntime } = await import("@/runtimes/asclepius/AsclepiusRuntime");
       const response = await new AsclepiusRuntime().process(prompt);
       const synthesis = (response.result as {
         synthesis: {
@@ -327,6 +353,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "logos": {
+      const { LogosRuntime } = await import("@/runtimes/logos/LogosRuntime");
       const response = await new LogosRuntime().process(prompt);
       const synthesis = (response.result as {
         synthesis: {
@@ -353,6 +380,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "prometheus-mind": {
+      const { PrometheusMindRuntime } = await import("@/runtimes/prometheus-mind/PrometheusNindRuntime");
       const response = await new PrometheusMindRuntime().process(prompt);
       const synthesis = (response.result as {
         synthesis: {
@@ -382,6 +410,7 @@ export async function buildCognitiveRuntimeContext(
       };
     }
     case "nexus-prime": {
+      const { NexusAGIBorderSystem } = await import("@/runtimes/nexus-prime/NexusPrimeRuntime");
       const response = await new NexusAGIBorderSystem().query(prompt);
       const confidence = analysisQualityConfidence(response, response.synthesis.confidenceLevel, 0.92);
       return {
@@ -399,28 +428,122 @@ export async function buildCognitiveRuntimeContext(
         ].join("\n"),
       };
     }
-    case "hippocrates-supreme":
+    case "hippocrates-supreme": {
+      const { HippocratesSupremeRuntime } = await import("@/runtimes/hippocrates-supreme/HippocratesSupremeRuntime");
       return buildSupremeRuntimeContext(kind, new HippocratesSupremeRuntime(), prompt);
-    case "mendeleev":
+    }
+    case "mendeleev": {
+      const { MendeleevRuntime } = await import("@/runtimes/mendeleev/MendeleevRuntime");
       return buildSupremeRuntimeContext(kind, new MendeleevRuntime(), prompt);
-    case "prompt-forge":
+    }
+    case "prompt-forge": {
+      const { PromptForgeRuntime } = await import("@/runtimes/prompt-forge/PromptForgeRuntime");
       return buildSupremeRuntimeContext(kind, new PromptForgeRuntime(), prompt);
-    case "silicon-valley":
+    }
+    case "silicon-valley": {
+      const { SiliconValleyRuntime } = await import("@/runtimes/silicon-valley/SiliconValleyRuntime");
       return buildSupremeRuntimeContext(kind, new SiliconValleyRuntime(), prompt);
-    case "unreal-forge":
+    }
+    case "unreal-forge": {
+      const { UnrealForgeRuntime } = await import("@/runtimes/unreal-forge/UnrealForgeRuntime");
       return buildSupremeRuntimeContext(kind, new UnrealForgeRuntime(), prompt);
-    case "aegis":
+    }
+    case "aegis": {
+      const { AegisRuntime } = await import("@/runtimes/aegis/AegisRuntime");
       return buildSupremeRuntimeContext(kind, new AegisRuntime(), prompt);
-    case "content-empire":
+    }
+    case "content-empire": {
+      const { ContentEmpireRuntime } = await import("@/runtimes/content-empire/ContentEmpireRuntime");
       return buildSupremeRuntimeContext(kind, new ContentEmpireRuntime(), prompt);
-    case "ad-commander":
+    }
+    case "ad-commander": {
+      const { AdCommanderRuntime } = await import("@/runtimes/ad-commander/AdCommanderRuntime");
       return buildSupremeRuntimeContext(kind, new AdCommanderRuntime(), prompt);
-    case "studio-one":
+    }
+    case "studio-one": {
+      const { StudioOneRuntime } = await import("@/runtimes/studio-one/StudioOneRuntime");
       return buildSupremeRuntimeContext(kind, new StudioOneRuntime(), prompt);
-    case "wall-street":
+    }
+    case "wall-street": {
+      const { WallStreetRuntime } = await import("@/runtimes/wall-street/WallStreetRuntime");
       return buildSupremeRuntimeContext(kind, new WallStreetRuntime(), prompt);
-    case "pixel-forge":
+    }
+    case "pixel-forge": {
+      const { PixelForgeRuntime } = await import("@/runtimes/pixel-forge/PixelForgeRuntime");
       return buildSupremeRuntimeContext(kind, new PixelForgeRuntime(), prompt);
+    }
+    case "aether": {
+      const { AetherRuntime } = await import("@/runtimes/aether/AetherRuntime");
+      return buildSupremeRuntimeContext(kind, new AetherRuntime(), prompt);
+    }
+    case "ambrosia": {
+      const { AmbrosiaRuntime } = await import("@/runtimes/ambrosia/AmbrosiaRuntime");
+      return buildSupremeRuntimeContext(kind, new AmbrosiaRuntime(), prompt);
+    }
+    case "quantum": {
+      const { QuantumRuntime } = await import("@/runtimes/quantum/QuantumRuntime");
+      return buildSupremeRuntimeContext(kind, new QuantumRuntime(), prompt);
+    }
+    case "cortex": {
+      const { CortexRuntime } = await import("@/runtimes/cortex/CortexRuntime");
+      return buildSupremeRuntimeContext(kind, new CortexRuntime(), prompt);
+    }
+    case "midas": {
+      const { MidasRuntime } = await import("@/runtimes/midas/MidasRuntime");
+      return buildSupremeRuntimeContext(kind, new MidasRuntime(), prompt);
+    }
+    case "asclepius-nextgen": {
+      const { AsclepiusRuntime: NextGenAsclepiusRuntime } = await import("@/runtimes/nextgen-asclepius/AsclepiusRuntime");
+      return buildSupremeRuntimeContext(kind, new NextGenAsclepiusRuntime(), prompt);
+    }
+    case "hermes-memetics": {
+      const { HermesRuntime: HermesMemeticsRuntime } = await import("@/runtimes/nextgen-hermes/HermesRuntime");
+      return buildSupremeRuntimeContext(kind, new HermesMemeticsRuntime(), prompt);
+    }
+    case "oracle-symbolic": {
+      const { OracleRuntime: OracleSymbolicRuntime } = await import("@/runtimes/nextgen-oracle/OracleRuntime");
+      return buildSupremeRuntimeContext(kind, new OracleSymbolicRuntime(), prompt);
+    }
+    case "aetherion": {
+      const { AetherionRuntime } = await import("@/runtimes/aetherion/AetherionRuntime");
+      return buildSupremeRuntimeContext(kind, new AetherionRuntime(), prompt);
+    }
+    case "elysium": {
+      const { ElysiumRuntime } = await import("@/runtimes/elysium/ElysiumRuntime");
+      return buildSupremeRuntimeContext(kind, new ElysiumRuntime(), prompt);
+    }
+    case "panacea": {
+      const { PanaceaRuntime } = await import("@/runtimes/panacea/PanaceaRuntime");
+      return buildSupremeRuntimeContext(kind, new PanaceaRuntime(), prompt);
+    }
+    case "amrita": {
+      const { AmritaRuntime } = await import("@/runtimes/amrita/AmritaRuntime");
+      return buildSupremeRuntimeContext(kind, new AmritaRuntime(), prompt);
+    }
+    case "akasha": {
+      const { AkashaRuntime } = await import("@/runtimes/akasha/AkashaRuntime");
+      return buildSupremeRuntimeContext(kind, new AkashaRuntime(), prompt);
+    }
+    case "noumenon": {
+      const { NoumenonRuntime } = await import("@/runtimes/noumenon/NoumenonRuntime");
+      return buildSupremeRuntimeContext(kind, new NoumenonRuntime(), prompt);
+    }
+    case "mnemosyne": {
+      const { MnemosyneRuntime } = await import("@/runtimes/mnemosyne/MnemosyneRuntime");
+      return buildSupremeRuntimeContext(kind, new MnemosyneRuntime(), prompt);
+    }
+    case "peitho": {
+      const { PeithoRuntime } = await import("@/runtimes/peitho/PeithoRuntime");
+      return buildSupremeRuntimeContext(kind, new PeithoRuntime(), prompt);
+    }
+    case "leviathan": {
+      const { LeviathanRuntime } = await import("@/runtimes/leviathan/LeviathanRuntime");
+      return buildSupremeRuntimeContext(kind, new LeviathanRuntime(), prompt);
+    }
+    case "pleroma": {
+      const { PleromaRuntime } = await import("@/runtimes/pleroma/PleromaRuntime");
+      return buildSupremeRuntimeContext(kind, new PleromaRuntime(), prompt);
+    }
     default:
       return undefined;
   }

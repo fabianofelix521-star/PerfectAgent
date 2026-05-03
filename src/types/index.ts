@@ -261,6 +261,24 @@ export type RuntimeKind =
   | "studio-one" // Streaming/social content production swarm
   | "wall-street" // Trading, crypto and investment swarm
   | "pixel-forge" // Graphic design and AI image prompt swarm
+  | "aether" // Hyper-realistic 3D worldbuilding and simulation swarm
+  | "ambrosia" // Nutrition, metabolism and longevity modeling swarm
+  | "quantum" // Quantum algorithms, simulation and error-correction swarm
+  | "cortex" // Neuroscience, BCI and cognitive augmentation swarm
+  | "midas" // Paper-trading crypto and DeFi swarm
+  | "asclepius-nextgen" // Research-only molecular/pharmacology swarm (new generation)
+  | "hermes-memetics" // Ethical poly-marketing and memetics swarm (new generation)
+  | "oracle-symbolic" // Symbolic spirituality and contemplative analysis swarm (new generation)
+  | "aetherion" // Hyperdimensional software and systems architecture swarm
+  | "elysium" // Hyperreal worlds and living realities genesis swarm
+  | "panacea" // Molecular medicine and systemic healing hyperswarm
+  | "amrita" // Molecular nutrition and metabolic optimization hyperswarm
+  | "akasha" // Perennial wisdom and consciousness cartography hyperswarm
+  | "noumenon" // Quantum reality and fundamental physics hyperswarm
+  | "mnemosyne" // Neural architecture and cognitive engineering hyperswarm
+  | "peitho" // Neuro-persuasion and ethical marketing hyperswarm
+  | "leviathan" // Crypto markets alpha and risk sovereignty hyperswarm
+  | "pleroma" // Meta-cognitive orchestration and emergent intelligence hyperswarm
   | "stigmergy-nexus" // Vectorial State Space with reactive triggers
   | "ephemeral-genesis" // Just-in-time micro-agent compilation
   | "supreme-coordinator" // Hierarchical swarm: Strategic Layer + 15 Domain Supervisors + Infra
@@ -295,6 +313,8 @@ export interface AgentRuntime {
   exits: string[];
   llmProviderId?: string;
   llmModel?: string;
+  skillIds?: string[];
+  toolIds?: string[];
   memory: boolean;
   isDefault?: boolean;
   status: RuntimeStatus;
@@ -319,6 +339,8 @@ export interface StudioProject {
   description?: string;
   files: ProjectFile[];
   activeFile?: string;
+  /** ID of the studio thread that generated this project (for chat restore). */
+  threadId?: string;
   createdAt: number;
   updatedAt: number;
 }

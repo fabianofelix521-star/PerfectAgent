@@ -1,3 +1,8 @@
+/**
+ * @deprecated Este store não está sendo usado por nenhum módulo da aplicação.
+ * O store autoritativo é `src/stores/config.ts` (exporta `useConfig`).
+ * Este arquivo pode ser removido com segurança após confirmação.
+ */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 

@@ -5,8 +5,8 @@ export interface AgentCapability {
   id: string;
   name: string;
   description: string;
-  inputSchema: Record<string, any>;
-  outputSchema: Record<string, any>;
+  inputSchema: Record<string, unknown>;
+  outputSchema: Record<string, unknown>;
   avgLatencyMs: number;
   costPerCall?: number;
 }
@@ -61,7 +61,7 @@ export interface AgentTool {
 export interface CollaborationRequest {
   fromAgentId: string;
   task: string;
-  payload?: Record<string, any>;
+  payload?: Record<string, unknown>;
 }
 
 export interface CollaborationResponse {

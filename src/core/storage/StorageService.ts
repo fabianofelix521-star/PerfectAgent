@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { AgentRuntime, ChatMessageV2, StudioProject } from "@/types";
+import type { AgentRuntime, ChatMessageV2, ProjectFile, StudioProject } from "@/types";
 import type { ChatThread } from "@/stores/config";
 
 export interface WorkflowRecord {
@@ -23,6 +23,18 @@ export interface AgentTaskRecord {
   error?: string;
   startedAt?: number;
   completedAt?: number;
+}
+
+export interface ArtifactRecord {
+  /** messageId, `project:{projectId}:{filename}`, or any unique key */
+  id: string;
+  /** Files: source code, images (dataUrl), sprites, audio (dataUrl), etc. */
+  files: ProjectFile[];
+  threadId?: string;
+  projectId?: string;
+  label?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface PerfectAgentDB extends DBSchema {
@@ -51,6 +63,11 @@ interface PerfectAgentDB extends DBSchema {
     value: AgentTaskRecord;
     indexes: { "by-agent": string };
   };
+  artifacts: {
+    key: string;
+    value: ArtifactRecord;
+    indexes: { "by-thread": string; "by-project": string };
+  };
 }
 
 class StorageServiceImpl {
@@ -58,18 +75,35 @@ class StorageServiceImpl {
 
   private getDb() {
     if (!this.dbPromise) {
-      this.dbPromise = openDB<PerfectAgentDB>("perfectagent", 1, {
-        upgrade(db) {
-          const chat = db.createObjectStore("chatSessions", { keyPath: "id" });
-          chat.createIndex("by-updated", "updatedAt");
-          const projects = db.createObjectStore("projects", { keyPath: "id" });
-          projects.createIndex("by-updated", "updatedAt");
-          const agents = db.createObjectStore("agents", { keyPath: "id" });
-          agents.createIndex("by-status", "status");
-          const workflows = db.createObjectStore("workflows", { keyPath: "id" });
-          workflows.createIndex("by-status", "status");
-          const tasks = db.createObjectStore("agentTasks", { keyPath: "id" });
-          tasks.createIndex("by-agent", "agentId");
+      this.dbPromise = openDB<PerfectAgentDB>("perfectagent", 2, {
+        upgrade(db, _oldVersion) {
+          // v1 stores (create only if not already present)
+          if (!db.objectStoreNames.contains("chatSessions")) {
+            const chat = db.createObjectStore("chatSessions", { keyPath: "id" });
+            chat.createIndex("by-updated", "updatedAt");
+          }
+          if (!db.objectStoreNames.contains("projects")) {
+            const projects = db.createObjectStore("projects", { keyPath: "id" });
+            projects.createIndex("by-updated", "updatedAt");
+          }
+          if (!db.objectStoreNames.contains("agents")) {
+            const agents = db.createObjectStore("agents", { keyPath: "id" });
+            agents.createIndex("by-status", "status");
+          }
+          if (!db.objectStoreNames.contains("workflows")) {
+            const workflows = db.createObjectStore("workflows", { keyPath: "id" });
+            workflows.createIndex("by-status", "status");
+          }
+          if (!db.objectStoreNames.contains("agentTasks")) {
+            const tasks = db.createObjectStore("agentTasks", { keyPath: "id" });
+            tasks.createIndex("by-agent", "agentId");
+          }
+          // v2: artifacts store for large generated files and binary assets
+          if (!db.objectStoreNames.contains("artifacts")) {
+            const art = db.createObjectStore("artifacts", { keyPath: "id" });
+            art.createIndex("by-thread", "threadId");
+            art.createIndex("by-project", "projectId");
+          }
         },
       });
     }
@@ -138,6 +172,38 @@ class StorageServiceImpl {
       messages: [...thread.messages, message],
       updatedAt: Date.now(),
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Artifacts — large generated files, images, game assets, audio, etc.
+  // Stored in IDB; no quota limit (uses host SSD).
+  // ---------------------------------------------------------------------------
+
+  async saveArtifacts(record: ArtifactRecord): Promise<void> {
+    await (await this.getDb()).put("artifacts", record);
+  }
+
+  async getArtifacts(id: string): Promise<ArtifactRecord | undefined> {
+    return (await this.getDb()).get("artifacts", id);
+  }
+
+  async getArtifactsByThread(threadId: string): Promise<ArtifactRecord[]> {
+    return (await this.getDb()).getAllFromIndex("artifacts", "by-thread", threadId);
+  }
+
+  async getArtifactsByProject(projectId: string): Promise<ArtifactRecord[]> {
+    return (await this.getDb()).getAllFromIndex("artifacts", "by-project", projectId);
+  }
+
+  async deleteArtifacts(id: string): Promise<void> {
+    await (await this.getDb()).delete("artifacts", id);
+  }
+
+  async deleteArtifactsByThread(threadId: string): Promise<void> {
+    const records = await this.getArtifactsByThread(threadId);
+    const tx = (await this.getDb()).transaction("artifacts", "readwrite");
+    await Promise.all(records.map((r) => tx.store.delete(r.id)));
+    await tx.done;
   }
 }
 

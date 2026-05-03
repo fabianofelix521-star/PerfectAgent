@@ -80,7 +80,7 @@ describe("auth login flow", () => {
     render(<App />);
 
     expect(
-      await screen.findByText("Entre com a key do servidor para destravar o app.", undefined, {
+      await screen.findByText("Entre com a chave do servidor", undefined, {
         timeout: LAZY_ROUTE_TIMEOUT,
       }),
     ).toBeInTheDocument();

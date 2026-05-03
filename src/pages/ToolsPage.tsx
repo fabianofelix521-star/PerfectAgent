@@ -32,17 +32,17 @@ export function ToolsPage() {
       <Surface>
         <div className="grid gap-3 lg:grid-cols-2">
           {tools.map((t) => (
-            <div key={t.id} className="rounded-3xl border border-white/70 bg-white/60 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <div key={t.id} className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/60 p-3 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#17172d] text-white"><Wrench className="h-5 w-5" /></span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{t.name}</h3>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 break-words text-sm font-semibold text-slate-950 sm:text-base">{t.name}</h3>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">{KIND_LABEL[t.kind]}</span>
                       {t.builtIn && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">Built-in</span>}
                     </div>
-                    <p className="mt-1 text-xs font-medium text-slate-500">{t.description}</p>
+                    <p className="mt-1 break-words text-xs font-medium text-slate-500">{t.description}</p>
                   </div>
                 </div>
                 <button onClick={() => toggleTool(t.id)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${t.enabled ? "bg-emerald-500" : "bg-slate-300"}`}>
@@ -51,12 +51,12 @@ export function ToolsPage() {
               </div>
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {t.params.map((p) => (
-                  <span key={p.key} className="rounded-full bg-slate-950/5 px-2.5 py-1 text-[11px] font-mono text-slate-600">
+                  <span key={p.key} className="min-w-0 break-all rounded-full bg-slate-950/5 px-2.5 py-1 text-[11px] font-mono text-slate-600">
                     {p.key}: {p.type}{p.required ? "*" : ""}
                   </span>
                 ))}
               </div>
-              <div className="mt-3 flex justify-end gap-2">
+              <div className="mt-3 flex flex-wrap justify-start gap-2 sm:justify-end">
                 <button onClick={() => setRunning(t)} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
                   <Play className="h-3 w-3" /> Testar
                 </button>

@@ -134,4 +134,5 @@ describe("app route smoke", () => {
     expect(await screen.findByText(/Oi! Estou aqui/i)).toBeInTheDocument();
     expect(screen.queryByText(/plan\s*\{/i)).not.toBeInTheDocument();
   }, 20000);
+
 });

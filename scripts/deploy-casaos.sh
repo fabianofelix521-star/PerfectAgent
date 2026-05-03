@@ -8,7 +8,9 @@ REMOTE_DIR="${DEPLOY_DIR:-/DATA/AppData/nexus-ultra-agi}"
 SERVICE_NAME="${DEPLOY_SERVICE:-nexus-ultra-agi}"
 PORT="${PORT:-3336}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
+SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/felixcrow_casaos_ed25519}"
 SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+[[ -f "$SSH_KEY" ]] && SSH_OPTS+=(-i "$SSH_KEY")
 
 control_dir="${NEXUS_SSH_CONTROL_DIR:-${TMPDIR:-/tmp}}"
 if ((${#control_dir} > 24)); then
@@ -133,6 +135,8 @@ run_remote_root "cat > '$REMOTE_DIR/shared/nexus-ultra-agi.env' <<'ENV'
 NODE_ENV=production
 PORT=$PORT
 NEXUS_AUTH_KEY=$NEXUS_AUTH_KEY
+NEXUS_AUTH_COOKIE_SECURE=${NEXUS_AUTH_COOKIE_SECURE:-true}
+NEXUS_CORS_ORIGINS=${NEXUS_CORS_ORIGINS:-https://nexus.felixsuperclaw.com,http://192.168.0.185:3336}
 ENV
 chmod 600 '$REMOTE_DIR/shared/nexus-ultra-agi.env'
 chown root:root '$REMOTE_DIR/shared/nexus-ultra-agi.env'

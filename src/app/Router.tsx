@@ -603,7 +603,7 @@ function AppShell() {
           </div>
         </>
       ) : null}
-      <div className="flex min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-5">
+      <div className={cn("flex min-w-0 flex-1 overflow-hidden p-2 pt-14 sm:p-3 lg:p-5", !isMobile && "pt-2 sm:pt-3 lg:pt-5")}>
         <div className="h-full min-h-0 w-full min-w-0">
           <Outlet />
         </div>

@@ -89,6 +89,19 @@ function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Returns true when a package.json string has actual npm dependencies. */
+function pkgContentHasDeps(content?: string): boolean {
+  if (!content) return false;
+  try {
+    const pkg = JSON.parse(content) as Record<string, unknown>;
+    return (
+      Object.keys({ ...(pkg.dependencies as object ?? {}), ...(pkg.devDependencies as object ?? {}) }).length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 function guessLanguage(path: string): string {
   if (path.endsWith(".tsx")) return "typescript";
   if (path.endsWith(".ts")) return "typescript";
@@ -207,6 +220,7 @@ export function CodeStudioPage() {
   const projects = useConfig((s) => s.projects);
   const activeProjectId = useConfig((s) => s.activeProjectId);
   const removeProject = useConfig((s) => s.removeProject);
+  const upsertProject = useConfig((s) => s.upsertProject);
   const setActiveProject = useConfig((s) => s.setActiveProject);
   const addStudioThread = useConfig((s) => s.addStudioThread);
   const setActiveStudioThread = useConfig((s) => s.setActiveStudioThread);
@@ -230,22 +244,36 @@ export function CodeStudioPage() {
   }
 
   function createNewProjectWorkspace() {
+    const now = Date.now();
     const threadId = `st-${uid()}`;
+    const projectId = `prj-${uid()}`;
     addStudioThread({
       id: threadId,
       title: "Novo projeto",
       skillIds: [],
       messages: [],
-      createdAt: Date.now(),
+      createdAt: now,
     });
+
+    upsertProject({
+      id: projectId,
+      name: "Untitled Project",
+      description: "",
+      files: [],
+      threadId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
     setActiveStudioThread(threadId);
-    setActiveProject(undefined);
+    setActiveProject(projectId);
     setProjectName("Untitled Project");
     setMainTab("chat-preview");
     setMobileTab("chat");
     setShowProjectPicker(false);
+    webContainerService.stopDevServer();
     previewManager.reset();
-    toast.success("Novo projeto limpo pronto para criação.");
+    toast.success("Nova página de projeto criada sem alterar a anterior.");
   }
 
   function deleteProjectFromHistory(project: StudioProject) {
@@ -459,6 +487,7 @@ export function CodeStudioPage() {
                           onClick={() => {
                             setActiveProject(project.id);
                             setProjectName(project.name ?? "Untitled Project");
+                            if (project.threadId) setActiveStudioThread(project.threadId);
                             setShowProjectPicker(false);
                           }}
                           className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left transition"
@@ -762,12 +791,14 @@ function ChatPreviewTab({
       const packageJson = activeProject.files.find(
         (file) => file.path === "package.json" || file.path.endsWith("/package.json"),
       )?.content;
-      previewManager.setBooting("Restaurando dependencias...");
-      const install = await webContainerService.installDeps(packageJson);
-      if (cancelled) return;
-      if (!install.success) {
-        previewManager.setError("npm install falhou ao restaurar o preview.");
-        return;
+      if (pkgContentHasDeps(packageJson)) {
+        previewManager.setBooting("Restaurando dependencias...");
+        const install = await webContainerService.installDeps(packageJson);
+        if (cancelled) return;
+        if (!install.success) {
+          previewManager.setError("npm install falhou ao restaurar o preview.");
+          return;
+        }
       }
 
       previewManager.setBooting("Subindo servidor de preview...");
@@ -914,6 +945,7 @@ function ChatPreviewTab({
     const toolingContext = await buildRuntimeToolingContext({
       prompt: generationRequest,
       selectedSkillIds: sel.skillIds,
+      selectedRuntimeId: resolvedRuntimeId,
       includeLiveWebSearch: true,
     });
 
@@ -933,43 +965,45 @@ function ChatPreviewTab({
       });
     }, 100);
 
-    // Route the prompt through the Pantheon (auction only — no LLM call).
-    // The winning agent's soulPrompt becomes additional system context for
-    // the SINGLE streamChat owned by runAgentLoop. Running a second stream
-    // here caused the backend to abort one of the two SSE connections, which
-    // surfaced as "This operation was aborted" in the chat.
-    const tags = extractTags(generationRequest);
+    const selectedRuntime = runtimes.find((r) => r.id === resolvedRuntimeId);
+    const shouldUsePantheonRouter = selectedRuntime?.kind === "morpheus-pantheon";
+
+    // Route via Pantheon only when Morpheus Pantheon runtime is selected.
+    // This avoids hidden routing side effects when the picker is on another runtime.
+    const tags = shouldUsePantheonRouter ? extractTags(generationRequest) : [];
     let pantheonContext: string | undefined;
-    try {
-      const { winner, task: routerTask } = await dispatchToPantheon(generationRequest, {
-        tags,
-        timeoutMs: 1200,
-        onEvent: (ev) => {
-          if (ev.kind === "posted") {
-            previewManager.appendLog(
-              `[morpheus] task ${ev.task.id} posted [${tags.join(", ")}]`,
-            );
-          } else if (ev.kind === "assigned" && ev.agentName) {
-            previewManager.appendLog(`[morpheus] auctioned to ${ev.agentName}`);
-            streamedContent =
-              `🎭 **Pantheon → ${ev.agentName}** assumiu (\`${ev.task.id}\`)\n\n` +
-              streamedContent;
-            throttledPatchAssistant(streamedContent);
-          } else if (ev.kind === "failed") {
-            previewManager.appendLog(`[morpheus] task ${ev.task.id} failed`);
-          }
-        },
-      });
-      pantheonContext = pantheonContextFor(winner);
-      if (!winner) {
+    if (shouldUsePantheonRouter) {
+      try {
+        const { winner, task: routerTask } = await dispatchToPantheon(generationRequest, {
+          tags,
+          timeoutMs: 1200,
+          onEvent: (ev) => {
+            if (ev.kind === "posted") {
+              previewManager.appendLog(
+                `[morpheus] task ${ev.task.id} posted [${tags.join(", ")}]`,
+              );
+            } else if (ev.kind === "assigned" && ev.agentName) {
+              previewManager.appendLog(`[morpheus] auctioned to ${ev.agentName}`);
+              streamedContent =
+                `🎭 **Pantheon → ${ev.agentName}** assumiu (\`${ev.task.id}\`)\n\n` +
+                streamedContent;
+              throttledPatchAssistant(streamedContent);
+            } else if (ev.kind === "failed") {
+              previewManager.appendLog(`[morpheus] task ${ev.task.id} failed`);
+            }
+          },
+        });
+        pantheonContext = pantheonContextFor(winner);
+        if (!winner) {
+          previewManager.appendLog(
+            `[morpheus] no agent bid on ${routerTask.id} — proceeding without persona`,
+          );
+        }
+      } catch (err) {
         previewManager.appendLog(
-          `[morpheus] no agent bid on ${routerTask.id} — proceeding without persona`,
+          `[morpheus] router failed: ${(err as Error).message}`,
         );
       }
-    } catch (err) {
-      previewManager.appendLog(
-        `[morpheus] router failed: ${(err as Error).message}`,
-      );
     }
 
     const projectContext = buildProjectContext(existingFiles);
@@ -990,8 +1024,7 @@ function ChatPreviewTab({
 
     try {
       // Use adapter if runtime available, otherwise direct agent loop
-      const runtime = runtimes.find((r) => r.id === resolvedRuntimeId);
-      const adapter = runtime ? createAdapter(runtime) : null;
+      const adapter = selectedRuntime ? createAdapter(selectedRuntime) : null;
       const generate = adapter
         ? adapter.generateProject.bind(adapter)
         : runAgentLoop;
@@ -1029,6 +1062,7 @@ function ChatPreviewTab({
             description: text,
             files: generatedFiles,
             activeFile: generatedFiles[0]?.path,
+            threadId: thread.id,
             createdAt: now,
             updatedAt: Date.now(),
           };

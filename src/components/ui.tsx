@@ -23,7 +23,7 @@ export function WorkspaceShell({
   return (
     <section className="chat-surface app-scrollbar fx-fade-in flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto rounded-[22px] border border-white/70 p-3 sm:p-5 lg:rounded-[28px] lg:p-7">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="max-w-3xl">
+        <div className="min-w-0 max-w-3xl">
           <BrandLockup
             compact
             iconSize={36}
@@ -57,7 +57,7 @@ export function Surface({
   return (
     <div
       className={cn(
-        "fx-card rounded-[22px] border border-white/70 bg-white/55 p-3 shadow-[0_18px_50px_rgba(90,105,150,0.10)] backdrop-blur-xl sm:p-4",
+        "fx-card min-w-0 rounded-[22px] border border-white/70 bg-white/55 p-3 shadow-[0_18px_50px_rgba(90,105,150,0.10)] backdrop-blur-xl sm:p-4",
         className,
       )}
     >
@@ -80,7 +80,7 @@ export function HeaderAction({
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className="fx-press inline-flex min-h-[36px] items-center gap-2 rounded-full bg-[#17172d] px-3.5 py-2 text-xs font-bold text-white shadow-[0_14px_36px_rgba(23,23,45,0.22)] sm:text-sm"
+      className="nexus-header-action fx-press inline-flex min-h-[36px] max-w-full items-center justify-center gap-2 rounded-full bg-[#17172d] px-3.5 py-2 text-xs font-bold text-white shadow-[0_14px_36px_rgba(23,23,45,0.22)] sm:text-sm"
     >
       <Icon className="h-4 w-4" />
       {label}
@@ -158,7 +158,7 @@ export function EditableField({
   const [shown, setShown] = useState(false);
   const isPwd = type === "password";
   return (
-    <label className="block rounded-[14px] border border-white/70 bg-white/65 px-3 py-2 transition focus-within:border-blue-300 focus-within:bg-white">
+    <label className="block min-w-0 rounded-[14px] border border-white/70 bg-white/65 px-3 py-2 transition focus-within:border-blue-300 focus-within:bg-white">
       <span className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
         {label}
         {isPwd ? (
@@ -199,7 +199,7 @@ export function SelectControl<T extends string>({
       Boolean(opt && typeof opt.value === "string" && typeof opt.label === "string"),
   );
   return (
-    <label className="block rounded-[14px] border border-white/70 bg-white/65 px-3 py-2 transition focus-within:border-blue-300 focus-within:bg-white">
+    <label className="block min-w-0 rounded-[14px] border border-white/70 bg-white/65 px-3 py-2 transition focus-within:border-blue-300 focus-within:bg-white">
       <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
         {label}
       </span>

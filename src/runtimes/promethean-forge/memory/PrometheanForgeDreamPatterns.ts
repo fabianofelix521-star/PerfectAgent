@@ -1,0 +1,17 @@
+export const PrometheanForgeDreamPatterns = [
+  "promethean-forge:dream-pattern-1",
+  "promethean-forge:dream-pattern-2",
+  "promethean-forge:dream-pattern-3",
+  "promethean-forge:dream-pattern-4",
+  "promethean-forge:dream-pattern-5",
+  "promethean-forge:dream-pattern-6",
+  "promethean-forge:dream-pattern-7",
+  "promethean-forge:dream-pattern-8",
+  "promethean-forge:dream-pattern-9",
+  "promethean-forge:dream-pattern-10",
+  "promethean-forge:dream-pattern-11",
+  "promethean-forge:dream-pattern-12",
+  "promethean-forge:dream-pattern-13",
+  "promethean-forge:dream-pattern-14",
+  "promethean-forge:dream-pattern-15",
+] as const;

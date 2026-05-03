@@ -84,7 +84,20 @@ function readStore(agentId: string): VectorRecord[] {
   }
 }
 
+const MAX_VECTORS = 500;
+
 function writeStore(agentId: string, records: VectorRecord[]): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key(agentId), JSON.stringify(records));
+  const trimmed = records.length > MAX_VECTORS ? records.slice(-MAX_VECTORS) : records;
+  const serialized = JSON.stringify(trimmed);
+  try {
+    localStorage.setItem(key(agentId), serialized);
+  } catch {
+    try {
+      const half = JSON.stringify(trimmed.slice(-Math.ceil(trimmed.length / 2)));
+      localStorage.setItem(key(agentId), half);
+    } catch {
+      // Silent drop
+    }
+  }
 }

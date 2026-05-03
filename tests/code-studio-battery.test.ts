@@ -140,6 +140,79 @@ describe("Code Studio test battery", () => {
     expect(state.timeToLiveMs).toBeDefined();
   });
 
+  it("preview manager reset clears stale preview URL for a new workspace", () => {
+    previewManager.startCycle("existing-project");
+    previewManager.setLive("http://localhost:5173", 5173);
+
+    previewManager.reset();
+    const state = previewManager.getState();
+    expect(state.status).toBe("idle");
+    expect(state.mode).toBe("none");
+    expect(state.liveUrl).toBeUndefined();
+    expect(state.url).toBeUndefined();
+    expect(state.projectId).toBeUndefined();
+  });
+
+  it("creating a new project workspace preserves previous projects", () => {
+    const now = Date.now();
+    useConfig.setState({
+      projects: [
+        {
+          id: "prj-existing",
+          name: "Projeto antigo",
+          files: [{ path: "index.html", content: "<html></html>" }],
+          activeFile: "index.html",
+          threadId: "st-existing",
+          createdAt: now - 10_000,
+          updatedAt: now - 10_000,
+        },
+      ],
+      activeProjectId: "prj-existing",
+      studioThreads: [
+        {
+          id: "st-existing",
+          title: "Projeto antigo",
+          skillIds: [],
+          messages: [],
+          createdAt: now - 10_000,
+          updatedAt: now - 10_000,
+        },
+      ],
+      activeStudioThreadId: "st-existing",
+    } as never);
+
+    const addStudioThread = useConfig.getState().addStudioThread;
+    const upsertProject = useConfig.getState().upsertProject;
+    const setActiveProject = useConfig.getState().setActiveProject;
+    const setActiveStudioThread = useConfig.getState().setActiveStudioThread;
+
+    addStudioThread({
+      id: "st-new",
+      title: "Novo projeto",
+      skillIds: [],
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    upsertProject({
+      id: "prj-new",
+      name: "Untitled Project",
+      description: "",
+      files: [],
+      threadId: "st-new",
+      createdAt: now,
+      updatedAt: now,
+    });
+    setActiveStudioThread("st-new");
+    setActiveProject("prj-new");
+
+    const state = useConfig.getState();
+    expect(state.projects.some((project) => project.id === "prj-existing")).toBe(true);
+    expect(state.projects.some((project) => project.id === "prj-new")).toBe(true);
+    expect(state.activeProjectId).toBe("prj-new");
+    expect(state.activeStudioThreadId).toBe("st-new");
+  });
+
   it("runAgentLoop preserves the selected provider model in Code Studio", async () => {
     const { api } = await import("@/services/api");
     const streamChat = vi.mocked(api.streamChat);

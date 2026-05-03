@@ -1,0 +1,17 @@
+export const AtlasImmortalisDreamPatterns = [
+  "atlas-immortalis:dream-pattern-1",
+  "atlas-immortalis:dream-pattern-2",
+  "atlas-immortalis:dream-pattern-3",
+  "atlas-immortalis:dream-pattern-4",
+  "atlas-immortalis:dream-pattern-5",
+  "atlas-immortalis:dream-pattern-6",
+  "atlas-immortalis:dream-pattern-7",
+  "atlas-immortalis:dream-pattern-8",
+  "atlas-immortalis:dream-pattern-9",
+  "atlas-immortalis:dream-pattern-10",
+  "atlas-immortalis:dream-pattern-11",
+  "atlas-immortalis:dream-pattern-12",
+  "atlas-immortalis:dream-pattern-13",
+  "atlas-immortalis:dream-pattern-14",
+  "atlas-immortalis:dream-pattern-15",
+] as const;

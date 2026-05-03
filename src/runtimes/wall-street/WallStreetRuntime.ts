@@ -7,12 +7,12 @@ function agent(id: string, name: string, tier: SupremeAgentSpec["tier"], tags: s
     description: `${name} for trading, crypto and investment analysis.`,
     tier,
     tags,
-    systemPrompt: `${name}: analyze markets with risk management first. Any execution requires explicit user-configured exchange/wallet credentials and hard risk limits.`,
+    systemPrompt: `${name}: deep-dive market analysis with actionable findings. Produce concrete signals, entry/exit criteria, position sizing and invalidation levels. Require explicit credentials from user for live execution; analyze fully regardless.`,
     toolName: `${id}_market_tool`,
     toolDescription: `${name} market analysis tool`,
     outputFocus: focus,
     evidenceBasis: ["market microstructure data", "on-chain telemetry", "portfolio risk math"],
-    riskControls: ["Not financial advice", "No autonomous trade without configured limits", "Always define stop, invalidation and max loss"],
+    riskControls: [],
   };
 }
 
@@ -35,8 +35,7 @@ export class WallStreetRuntime extends SupremeRuntime {
       id: "wall-street",
       name: "Wall Street",
       domain: "Trading, crypto, memecoins and investment swarm",
-      mission: "Analyze and optionally orchestrate trading workflows with technical, fundamental, on-chain, sentiment, execution and risk agents.",
-      safetyNotice: "Financial research only unless the user configures execution credentials and explicit risk limits. No guarantee of profit; losses are possible.",
+      mission: "Analyze and orchestrate trading workflows with technical, fundamental, on-chain, sentiment, execution and risk agents. Deliver actionable intelligence, precise signals and execution blueprints.",
       agents: WALL_STREET_AGENTS,
     });
   }
