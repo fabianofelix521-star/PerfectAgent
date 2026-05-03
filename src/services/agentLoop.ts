@@ -64,6 +64,94 @@ export interface AgentLoopResult {
 
 const MAX_SELF_HEAL = 8;
 
+/* ---- static-server injected when project has no npm dev server ---- */
+const STATIC_SERVER_JS = `const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const port = process.env.PORT || 3000;
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css',
+  '.js': 'application/javascript', '.mjs': 'application/javascript',
+  '.json': 'application/json', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+  '.woff': 'font/woff', '.ttf': 'font/ttf', '.txt': 'text/plain',
+};
+http.createServer(function(req, res) {
+  var urlPath = req.url.split('?')[0].split('#')[0];
+  if (!urlPath || urlPath === '/') urlPath = '/index.html';
+  var filePath = path.join(__dirname, urlPath);
+  fs.readFile(filePath, function(err, data) {
+    if (err) {
+      fs.readFile(path.join(__dirname, 'index.html'), function(e2, d2) {
+        if (e2) { res.writeHead(404); res.end('Not found'); return; }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(d2);
+      });
+      return;
+    }
+    var ext = path.extname(filePath).toLowerCase();
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    res.end(data);
+  });
+}).listen(port, function() { console.log('Server ready on port ' + port); });`;
+
+/**
+ * Ensures every project has a runnable dev server.
+ * For static HTML projects (no package.json or no dev script + no npm deps),
+ * injects a minimal Node-built-in static server so npm install can be skipped.
+ */
+function normalizeRunnableProject(files: ProjectFile[]): ProjectFile[] {
+  const pkgFile = files.find((f) => f.path === "package.json");
+  const hasIndexHtml = files.some((f) => f.path === "index.html" || f.path === "public/index.html");
+
+  // Case 1: No package.json at all but has HTML → inject static server
+  if (!pkgFile && hasIndexHtml) {
+    return [
+      ...files,
+      {
+        path: "package.json",
+        content: JSON.stringify({ name: "project", version: "1.0.0", scripts: { dev: "node _serve.js" } }, null, 2),
+        language: "json",
+      },
+      { path: "_serve.js", content: STATIC_SERVER_JS, language: "javascript" },
+    ];
+  }
+
+  // Case 2: Has package.json, no dev script, no npm deps, has HTML → inject static server
+  if (pkgFile && hasIndexHtml) {
+    try {
+      const pkg = JSON.parse(pkgFile.content) as Record<string, unknown>;
+      const scripts = (pkg.scripts ?? {}) as Record<string, string>;
+      const deps = Object.keys({ ...(pkg.dependencies as object ?? {}), ...(pkg.devDependencies as object ?? {}) });
+      if (!scripts.dev && deps.length === 0) {
+        const updatedPkg = { ...pkg, scripts: { ...scripts, dev: "node _serve.js" } };
+        const updatedFiles = files.map((f) =>
+          f.path === "package.json" ? { ...f, content: JSON.stringify(updatedPkg, null, 2) } : f,
+        );
+        if (files.some((f) => f.path === "_serve.js")) return updatedFiles;
+        return [...updatedFiles, { path: "_serve.js", content: STATIC_SERVER_JS, language: "javascript" }];
+      }
+    } catch {
+      /* malformed JSON — leave as-is, auto-fix will handle it */
+    }
+  }
+
+  return files;
+}
+
+/** Returns true only when package.json has actual npm dependencies to install. */
+function hasNpmDependencies(files: ProjectFile[]): boolean {
+  const pkgFile = files.find((f) => f.path === "package.json");
+  if (!pkgFile) return false;
+  try {
+    const pkg = JSON.parse(pkgFile.content) as Record<string, unknown>;
+    return Object.keys({ ...(pkg.dependencies as object ?? {}), ...(pkg.devDependencies as object ?? {}) }).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopResult> {
   const {
     request,
@@ -181,13 +269,13 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
       return { ok: false, files: [], iterations: 0, method: "none", error: "No files generated" };
     }
 
-    allFiles = files;
-    onFiles(files);
+    allFiles = normalizeRunnableProject(files);
+    onFiles(allFiles);
     emit({
       phase: "writing-files",
-      message: `Writing ${files.length} files...`,
+      message: `Writing ${allFiles.length} files...`,
       level: "success",
-      detail: files.map((f) => f.path).join(", "),
+      detail: allFiles.map((f) => f.path).join(", "),
     });
 
     /* ---- Phase 3: Boot WebContainer + mount ---- */
@@ -208,7 +296,7 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
     }
 
     previewManager.setBooting("Mounting project files...");
-    const tree = filesToWebContainerTree(files);
+    const tree = filesToWebContainerTree(allFiles);
     await webContainerService.mount(tree);
     emit({ phase: "writing-files", message: "Files mounted", level: "success" });
 
@@ -225,21 +313,25 @@ export async function runAgentLoop(params: AgentLoopParams): Promise<AgentLoopRe
         if (signal?.aborted) throw new Error("aborted");
         iteration++;
 
-        // Install deps
-        emit({ phase: "installing", message: "Installing dependencies...", level: "info", iteration });
-        previewManager.setBooting("Running npm install...");
+        // Install deps — skip entirely when no npm dependencies are declared
         const pkgFile = allFiles.find((f) => f.path === "package.json");
-        const installResult = await webContainerService.installDeps(pkgFile?.content);
+        if (hasNpmDependencies(allFiles)) {
+          emit({ phase: "installing", message: "Installing dependencies...", level: "info", iteration });
+          previewManager.setBooting("Running npm install...");
+          const installResult = await webContainerService.installDeps(pkgFile?.content);
 
-        if (!installResult.success) {
-          emit({ phase: "debugging", message: "Install failed, auto-fixing...", level: "warn", iteration });
-          allFiles = await autoFixFile(allFiles, "package.json", logs, spec, routedModel, signal);
-          onFiles(allFiles);
-          await webContainerService.mount(filesToWebContainerTree(allFiles));
-          continue;
+          if (!installResult.success) {
+            emit({ phase: "debugging", message: "Install failed, auto-fixing...", level: "warn", iteration });
+            allFiles = await autoFixFile(allFiles, "package.json", logs, spec, routedModel, signal);
+            onFiles(allFiles);
+            await webContainerService.mount(filesToWebContainerTree(allFiles));
+            continue;
+          }
+
+          emit({ phase: "installing", message: "Dependencies installed", level: "success", iteration });
+        } else {
+          emit({ phase: "installing", message: "No npm dependencies — skipping install.", level: "info", iteration });
         }
-
-        emit({ phase: "installing", message: "Dependencies installed", level: "success", iteration });
 
         // Start dev server
         emit({ phase: "starting-server", message: "Starting dev server...", level: "info", iteration });

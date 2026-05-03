@@ -440,7 +440,7 @@ export class ApolloRuntime {
         confidence: consensusHypotheses[0]?.confidence ?? 0,
         uncertaintyCount: this.identifyMissingInfo(consensusHypotheses).length,
       }),
-      disclaimer: "Uso educacional. Requer avaliação médica presencial.",
+      disclaimer: "",
     };
     this.learnFromReport(report);
     return report;

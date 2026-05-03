@@ -1,3 +1,5 @@
+import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+
 export interface CognitiveMemoryEnvelope<T> {
   schemaVersion: number;
   updatedAt: number;
@@ -33,6 +35,71 @@ export interface CognitiveQualityReport {
 }
 
 const volatileMemory = new Map<string, string>();
+const LOCAL_STORAGE_SOFT_LIMIT_BYTES = 24 * 1024;
+
+interface CognitiveMemoryDB extends DBSchema {
+  envelopes: {
+    key: string;
+    value: { key: string; payload: string; updatedAt: number };
+    indexes: { "by-updated": number };
+  };
+}
+
+let cognitiveDbPromise: Promise<IDBPDatabase<CognitiveMemoryDB>> | null = null;
+
+function cognitiveDb(): Promise<IDBPDatabase<CognitiveMemoryDB>> {
+  if (!cognitiveDbPromise) {
+    cognitiveDbPromise = openDB<CognitiveMemoryDB>("perfectagent-cognitive", 1, {
+      upgrade(db) {
+        const store = db.createObjectStore("envelopes", { keyPath: "key" });
+        store.createIndex("by-updated", "updatedAt");
+      },
+    });
+  }
+  return cognitiveDbPromise;
+}
+
+async function readDurableEnvelope(key: string): Promise<string | undefined> {
+  try {
+    const row = await (await cognitiveDb()).get("envelopes", key);
+    return row?.payload;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeDurableEnvelope(key: string, payload: string): Promise<void> {
+  try {
+    await (await cognitiveDb()).put("envelopes", {
+      key,
+      payload,
+      updatedAt: extractUpdatedAt(payload),
+    });
+  } catch {
+    // Ignore durability failures; runtime keeps volatile state.
+  }
+}
+
+function extractUpdatedAt(raw: string): number {
+  try {
+    const parsed = JSON.parse(raw) as Partial<CognitiveMemoryEnvelope<unknown>>;
+    return typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function isQuotaExceeded(error: unknown): boolean {
+  if (typeof DOMException === "undefined" || !(error instanceof DOMException)) {
+    return false;
+  }
+  return (
+    error.name === "QuotaExceededError" ||
+    error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    error.code === 22 ||
+    error.code === 1014
+  );
+}
 
 function safeStorage(): Storage | undefined {
   try {
@@ -45,13 +112,17 @@ function safeStorage(): Storage | undefined {
 }
 
 export class PersistentCognitiveMemory<T> {
+  private hydrationInFlight?: Promise<void>;
+
   constructor(
     private readonly key: string,
     private readonly defaultState: () => T,
-  ) {}
+  ) {
+    this.hydrationInFlight = this.hydrateFromDurableStore();
+  }
 
   load(): CognitiveMemoryEnvelope<T> {
-    const raw = safeStorage()?.getItem(this.key) ?? volatileMemory.get(this.key);
+    const raw = volatileMemory.get(this.key) ?? safeStorage()?.getItem(this.key);
     if (!raw) return this.empty();
     try {
       const parsed = JSON.parse(raw) as CognitiveMemoryEnvelope<T>;
@@ -72,11 +143,43 @@ export class PersistentCognitiveMemory<T> {
     }
   }
 
+  async hydrate(): Promise<void> {
+    if (!this.hydrationInFlight) {
+      this.hydrationInFlight = this.hydrateFromDurableStore();
+    }
+    await this.hydrationInFlight;
+  }
+
   save(envelope: CognitiveMemoryEnvelope<T>): void {
     const next = JSON.stringify({ ...envelope, updatedAt: now() });
+    volatileMemory.set(this.key, next);
+    void writeDurableEnvelope(this.key, next);
+
     const storage = safeStorage();
-    if (storage) storage.setItem(this.key, next);
-    else volatileMemory.set(this.key, next);
+    if (!storage) {
+      return;
+    }
+
+    if (next.length > LOCAL_STORAGE_SOFT_LIMIT_BYTES) {
+      try {
+        storage.removeItem(this.key);
+      } catch {
+        // Ignore storage cleanup failures.
+      }
+      return;
+    }
+
+    try {
+      storage.setItem(this.key, next);
+    } catch (error) {
+      if (isQuotaExceeded(error)) {
+        try {
+          storage.removeItem(this.key);
+        } catch {
+          // Ignore secondary storage failures.
+        }
+      }
+    }
   }
 
   update(mutator: (state: T) => T): CognitiveMemoryEnvelope<T> {
@@ -128,6 +231,34 @@ export class PersistentCognitiveMemory<T> {
       failures: [],
       qualityHistory: [],
     };
+  }
+
+  private async hydrateFromDurableStore(): Promise<void> {
+    const durableRaw = await readDurableEnvelope(this.key);
+    if (!durableRaw) return;
+
+    const cachedRaw = volatileMemory.get(this.key) ?? safeStorage()?.getItem(this.key);
+    const durableUpdatedAt = extractUpdatedAt(durableRaw);
+    const cachedUpdatedAt = cachedRaw ? extractUpdatedAt(cachedRaw) : 0;
+    if (cachedRaw && cachedUpdatedAt > durableUpdatedAt) return;
+
+    volatileMemory.set(this.key, durableRaw);
+
+    const storage = safeStorage();
+    if (!storage) return;
+    if (durableRaw.length > LOCAL_STORAGE_SOFT_LIMIT_BYTES) {
+      try {
+        storage.removeItem(this.key);
+      } catch {
+        // Ignore storage cleanup failures.
+      }
+      return;
+    }
+    try {
+      storage.setItem(this.key, durableRaw);
+    } catch {
+      // Ignore local cache errors.
+    }
   }
 }
 

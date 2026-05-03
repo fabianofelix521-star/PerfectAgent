@@ -1,0 +1,17 @@
+export const HeliosGenesisDreamPatterns = [
+  "helios-genesis:dream-pattern-1",
+  "helios-genesis:dream-pattern-2",
+  "helios-genesis:dream-pattern-3",
+  "helios-genesis:dream-pattern-4",
+  "helios-genesis:dream-pattern-5",
+  "helios-genesis:dream-pattern-6",
+  "helios-genesis:dream-pattern-7",
+  "helios-genesis:dream-pattern-8",
+  "helios-genesis:dream-pattern-9",
+  "helios-genesis:dream-pattern-10",
+  "helios-genesis:dream-pattern-11",
+  "helios-genesis:dream-pattern-12",
+  "helios-genesis:dream-pattern-13",
+  "helios-genesis:dream-pattern-14",
+  "helios-genesis:dream-pattern-15",
+] as const;

@@ -82,9 +82,24 @@ function read(agentId: string): SkillTrace[] {
   }
 }
 
+const MAX_SKILLS = 300;
+
 function write(agentId: string, data: SkillTrace[]): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key(agentId), JSON.stringify(data));
+  const trimmed = data.length > MAX_SKILLS
+    ? data.sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, MAX_SKILLS)
+    : data;
+  const serialized = JSON.stringify(trimmed);
+  try {
+    localStorage.setItem(key(agentId), serialized);
+  } catch {
+    try {
+      const half = JSON.stringify(trimmed.slice(0, Math.ceil(trimmed.length / 2)));
+      localStorage.setItem(key(agentId), half);
+    } catch {
+      // Silent drop
+    }
+  }
 }
 
 function inferSkillTitle(input: MemoryInput): string {

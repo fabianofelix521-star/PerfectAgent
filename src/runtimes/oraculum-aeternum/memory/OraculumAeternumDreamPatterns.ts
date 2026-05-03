@@ -1,0 +1,17 @@
+export const OraculumAeternumDreamPatterns = [
+  "oraculum-aeternum:dream-pattern-1",
+  "oraculum-aeternum:dream-pattern-2",
+  "oraculum-aeternum:dream-pattern-3",
+  "oraculum-aeternum:dream-pattern-4",
+  "oraculum-aeternum:dream-pattern-5",
+  "oraculum-aeternum:dream-pattern-6",
+  "oraculum-aeternum:dream-pattern-7",
+  "oraculum-aeternum:dream-pattern-8",
+  "oraculum-aeternum:dream-pattern-9",
+  "oraculum-aeternum:dream-pattern-10",
+  "oraculum-aeternum:dream-pattern-11",
+  "oraculum-aeternum:dream-pattern-12",
+  "oraculum-aeternum:dream-pattern-13",
+  "oraculum-aeternum:dream-pattern-14",
+  "oraculum-aeternum:dream-pattern-15",
+] as const;

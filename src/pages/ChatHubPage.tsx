@@ -562,6 +562,7 @@ export function ChatHubPage() {
     const runtimeToolingContext = await buildRuntimeToolingContext({
       prompt: clean,
       selectedSkillIds: selection.skillIds,
+      selectedRuntimeId: effectiveRuntimeId,
       includeLiveWebSearch: true,
     });
 

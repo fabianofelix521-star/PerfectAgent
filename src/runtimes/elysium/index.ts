@@ -1,0 +1,11 @@
+export { ElysiumRuntime } from "@/runtimes/elysium/ElysiumRuntime";
+export { SpectralRenderingArchmageAgent } from "@/runtimes/elysium/agents/SpectralRenderingArchmageAgent";
+export { EmergentPhysicsDeityAgent } from "@/runtimes/elysium/agents/EmergentPhysicsDeityAgent";
+export { CognitiveNPCSoulSmithAgent } from "@/runtimes/elysium/agents/CognitiveNPCSoulSmithAgent";
+export { ProceduralCosmosArchitectAgent } from "@/runtimes/elysium/agents/ProceduralCosmosArchitectAgent";
+export { EmergentNarrativeDirectorAgent } from "@/runtimes/elysium/agents/EmergentNarrativeDirectorAgent";
+export { ShaderAlchemyGrandmasterAgent } from "@/runtimes/elysium/agents/ShaderAlchemyGrandmasterAgent";
+export { WavePhysicsAudioAgent } from "@/runtimes/elysium/agents/WavePhysicsAudioAgent";
+export { AnimationVitalityAgent } from "@/runtimes/elysium/agents/AnimationVitalityAgent";
+export { OptimizationSorcererAgent } from "@/runtimes/elysium/agents/OptimizationSorcererAgent";
+export { WorldPersistenceTimekeeperAgent } from "@/runtimes/elysium/agents/WorldPersistenceTimekeeperAgent";

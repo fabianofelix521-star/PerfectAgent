@@ -1,0 +1,17 @@
+export const MuseionTranscendentDreamPatterns = [
+  "museion-transcendent:dream-pattern-1",
+  "museion-transcendent:dream-pattern-2",
+  "museion-transcendent:dream-pattern-3",
+  "museion-transcendent:dream-pattern-4",
+  "museion-transcendent:dream-pattern-5",
+  "museion-transcendent:dream-pattern-6",
+  "museion-transcendent:dream-pattern-7",
+  "museion-transcendent:dream-pattern-8",
+  "museion-transcendent:dream-pattern-9",
+  "museion-transcendent:dream-pattern-10",
+  "museion-transcendent:dream-pattern-11",
+  "museion-transcendent:dream-pattern-12",
+  "museion-transcendent:dream-pattern-13",
+  "museion-transcendent:dream-pattern-14",
+  "museion-transcendent:dream-pattern-15",
+] as const;

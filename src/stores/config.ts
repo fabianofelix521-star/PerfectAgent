@@ -22,6 +22,7 @@ import {
   deobfuscate,
   storage,
 } from "@/services/storage";
+import { idbZustandStorage } from "@/core/storage/idbZustandStorage";
 import {
   PROVIDER_PRESETS,
   presetById,
@@ -464,6 +465,7 @@ function seedCognitiveRuntime(
   description: string,
   kind: RuntimeKind,
   entry: string,
+  options: { skillIds?: string[]; toolIds?: string[] } = {},
 ): AgentRuntime {
   return {
     id,
@@ -475,6 +477,8 @@ function seedCognitiveRuntime(
     edges: [],
     entry,
     exits: [entry],
+    skillIds: options.skillIds,
+    toolIds: options.toolIds,
     memory: true,
     status: "ready",
   };
@@ -642,6 +646,314 @@ function seedCognitiveRuntimes(): AgentRuntime[] {
       "Graphic design swarm for brand, UI, social, print, motion, AI image prompts and mockups.",
       "pixel-forge",
       "pixel-forge",
+    ),
+    seedCognitiveRuntime(
+      "rt-aether",
+      "Aether Runtime · Hyperreal 3D Swarm",
+      "Hyper-realistic 3D game swarm with procedural worlds, simulation physics, NPC cognition and render-budget orchestration.",
+      "aether",
+      "aether",
+      {
+        skillIds: ["sk-aether-worldsmith", "sk-ui-ux-pro-max", "sk-coder", "sk-architect"],
+        toolIds: ["tl-ui-ux-pro-max", "tl-search", "tl-json", "tl-system-shell"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-ambrosia",
+      "Ambrosia Runtime · Nutrition Intelligence",
+      "Advanced nutrition and longevity swarm for metabolism, microbiome and nutrient interaction modeling in informative mode.",
+      "ambrosia",
+      "ambrosia",
+      {
+        skillIds: ["sk-ambrosia-longevity", "sk-live-web-research", "sk-autoresearch"],
+        toolIds: ["tl-search", "tl-autoresearch", "tl-open-websearch", "tl-calc", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-quantum",
+      "Quantum Runtime · Algorithmic Swarm",
+      "Quantum computing swarm for circuit design, Hamiltonian simulation, error correction and hybrid optimization.",
+      "quantum",
+      "quantum",
+      {
+        skillIds: ["sk-quantum-algorithms", "sk-live-web-research", "sk-coder"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-calc", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-cortex",
+      "Cortex Runtime · Neuro Cognition",
+      "Neuroscience and BCI-like swarm for neural decoding, plasticity and safe cognitive augmentation.",
+      "cortex",
+      "cortex",
+      {
+        skillIds: ["sk-cortex-neuro", "sk-live-web-research", "sk-openclaw-medical"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-open-websearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-midas",
+      "Midas Runtime · Paper Trading Swarm",
+      "Crypto and DeFi swarm with alpha scouting, on-chain analysis, memecoin dynamics and paper-trading risk controls.",
+      "midas",
+      "midas",
+      {
+        skillIds: ["sk-midas-paper-trading", "sk-live-web-research", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-autoresearch", "tl-open-websearch", "tl-http", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-asclepius-nextgen",
+      "Asclepius NextGen · Molecular Research",
+      "Research-only medicine swarm for molecules, mechanisms, synergy and in-silico clinical modeling.",
+      "asclepius-nextgen",
+      "asclepius-nextgen",
+      {
+        skillIds: ["sk-asclepius-nextgen", "sk-openclaw-medical", "sk-live-web-research"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-autoresearch", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-hermes-memetics",
+      "Hermes NextGen · Ethical Memetics",
+      "Ethical marketing swarm for memetics, psychographics, multi-channel orchestration and sentiment surfing.",
+      "hermes-memetics",
+      "hermes-memetics",
+      {
+        skillIds: ["sk-hermes-memetics", "sk-live-web-research", "sk-ui-ux-pro-max"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-ui-ux-pro-max"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-oracle-symbolic",
+      "Oracle NextGen · Symbolic Wisdom",
+      "Symbolic spirituality swarm for archetypes, contemplative protocols and cross-tradition synthesis without supernatural factual claims.",
+      "oracle-symbolic",
+      "oracle-symbolic",
+      {
+        skillIds: ["sk-oracle-symbolic", "sk-live-web-research", "sk-autoresearch-claw"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-pleroma",
+      "Pleroma · Meta-Cognitive Orchestrator",
+      "Meta-cognitive orchestration runtime for cross-domain synthesis, routing and emergent insight generation.",
+      "pleroma",
+      "pleroma",
+      {
+        skillIds: ["sk-architect", "sk-autoresearch", "sk-coder"],
+        toolIds: ["tl-search", "tl-autoresearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-aetherion",
+      "Aetherion · Hyperdimensional Engineering",
+      "Software and systems architecture runtime focused on formal rigor, resilience and autonomous design iteration.",
+      "aetherion",
+      "aetherion",
+      {
+        skillIds: ["sk-architect", "sk-coder", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-json", "tl-system-shell"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-elysium",
+      "Elysium · Reality Forge",
+      "Hyperreal worldbuilding runtime for simulation-heavy game and interactive world design.",
+      "elysium",
+      "elysium",
+      {
+        skillIds: ["sk-ui-ux-pro-max", "sk-coder", "sk-architect"],
+        toolIds: ["tl-ui-ux-pro-max", "tl-search", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-panacea",
+      "Panacea · Molecular Medicine",
+      "Molecular and systems medicine runtime for research-grade hypothesis generation and mechanism mapping.",
+      "panacea",
+      "panacea",
+      {
+        skillIds: ["sk-openclaw-medical", "sk-live-web-research", "sk-autoresearch"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-amrita",
+      "Amrita · Molecular Nutrition",
+      "Precision nutrition runtime integrating metabolism, microbiome and longitudinal lifestyle modeling.",
+      "amrita",
+      "amrita",
+      {
+        skillIds: ["sk-ambrosia-longevity", "sk-live-web-research", "sk-autoresearch"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-autoresearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-akasha",
+      "Akasha · Wisdom Cartography",
+      "Cross-tradition wisdom runtime for symbolic, contemplative and consciousness-oriented synthesis.",
+      "akasha",
+      "akasha",
+      {
+        skillIds: ["sk-oracle-symbolic", "sk-live-web-research", "sk-autoresearch-claw"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-noumenon",
+      "Noumenon · Fundamental Physics",
+      "Advanced physics runtime for rigorous reasoning across quantum theory, cosmology and computational models.",
+      "noumenon",
+      "noumenon",
+      {
+        skillIds: ["sk-quantum-algorithms", "sk-live-web-research", "sk-coder"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-calc", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-mnemosyne",
+      "Mnemosyne · Neuro Engineering",
+      "Neuroscience runtime for cognition, plasticity, BCI and circuit-level behavioral interpretation.",
+      "mnemosyne",
+      "mnemosyne",
+      {
+        skillIds: ["sk-cortex-neuro", "sk-live-web-research", "sk-openclaw-medical"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-peitho",
+      "Peitho · Ethical Persuasion",
+      "Neuro-aware ethical marketing runtime for conversion systems, messaging and trust-preserving growth.",
+      "peitho",
+      "peitho",
+      {
+        skillIds: ["sk-hermes-memetics", "sk-live-web-research", "sk-ui-ux-pro-max"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-ui-ux-pro-max"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-leviathan",
+      "Leviathan · Crypto Apex",
+      "Crypto and prediction-market runtime focused on alpha discovery, forensic analysis and risk sovereignty.",
+      "leviathan",
+      "leviathan",
+      {
+        skillIds: ["sk-midas-paper-trading", "sk-live-web-research", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-autoresearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-vortex-omega",
+      "Vortex Omega · Omni-Channel Marketing Apex",
+      "Apex marketing hyperswarm for multi-channel orchestration, viral systems engineering, and brand mythology evolution.",
+      "generic",
+      "vortex-omega",
+      {
+        skillIds: ["sk-hermes-memetics", "sk-live-web-research", "sk-ui-ux-pro-max"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-ui-ux-pro-max"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-hephaestus-prime",
+      "Hephaestus Prime · Code Genesis",
+      "Industrial software engineering hyperswarm for architecture, implementation, verification, and autonomous optimization loops.",
+      "generic",
+      "hephaestus-prime",
+      {
+        skillIds: ["sk-coder", "sk-architect", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-system-shell", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-chronos-realm",
+      "Chronos Realm · Living Worlds",
+      "Photoreal game-universe runtime for world simulation, emergent narrative, and persistent systems design.",
+      "generic",
+      "chronos-realm",
+      {
+        skillIds: ["sk-ui-ux-pro-max", "sk-coder", "sk-architect"],
+        toolIds: ["tl-search", "tl-json", "tl-ui-ux-pro-max"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-gaia-sophia",
+      "Gaia Sophia · Integrative Natural Medicine",
+      "Natural medicine and botanical pharmacology runtime combining traditional systems with modern mechanistic synthesis.",
+      "generic",
+      "gaia-sophia",
+      {
+        skillIds: ["sk-openclaw-medical", "sk-live-web-research", "sk-autoresearch"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-midas-infinity",
+      "Midas Infinity · Universal Markets",
+      "Multi-asset market intelligence runtime spanning equities, forex, commodities, derivatives and macro portfolio strategy.",
+      "generic",
+      "midas-infinity",
+      {
+        skillIds: ["sk-midas-paper-trading", "sk-live-web-research", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-autoresearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-promethean-forge",
+      "Promethean Forge · AI Model Genesis",
+      "Frontier AI and ML architecture runtime for model design, training systems, evaluation and interpretability.",
+      "generic",
+      "promethean-forge",
+      {
+        skillIds: ["sk-coder", "sk-architect", "sk-live-web-research"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-helios-genesis",
+      "Helios Genesis · Synthetic Biology",
+      "Biotechnology runtime for genetic engineering, synthetic biology, translational pathways and molecular design.",
+      "generic",
+      "helios-genesis",
+      {
+        skillIds: ["sk-openclaw-medical", "sk-live-web-research", "sk-autoresearch"],
+        toolIds: ["tl-openclaw-medical-search", "tl-search", "tl-open-websearch", "tl-json"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-atlas-immortalis",
+      "Atlas Immortalis · Longevity Optimization",
+      "Human-performance and longevity runtime for biomarker-guided optimization, anti-aging strategies and adaptive protocols.",
+      "generic",
+      "atlas-immortalis",
+      {
+        skillIds: ["sk-ambrosia-longevity", "sk-live-web-research", "sk-openclaw-medical"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-oraculum-aeternum",
+      "Oraculum Aeternum · Geostrategy Oracle",
+      "Geopolitical and macro strategy runtime for long-horizon scenario intelligence, regime detection and systemic risk foresight.",
+      "generic",
+      "oraculum-aeternum",
+      {
+        skillIds: ["sk-live-web-research", "sk-autoresearch", "sk-system-operator"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-autoresearch", "tl-json", "tl-calc"],
+      },
+    ),
+    seedCognitiveRuntime(
+      "rt-museion-transcendent",
+      "Museion Transcendent · Creative Genesis",
+      "Creative hyperswarm spanning music, visual arts, cinematic narrative, literature and transmedia worldbuilding.",
+      "generic",
+      "museion-transcendent",
+      {
+        skillIds: ["sk-ui-ux-pro-max", "sk-coder", "sk-live-web-research"],
+        toolIds: ["tl-search", "tl-open-websearch", "tl-json", "tl-ui-ux-pro-max"],
+      },
     ),
   ];
 }
@@ -813,6 +1125,86 @@ function seedSkills(): Skill[] {
         "You are a data analyst. Generate SQL, explain queries, and propose visualizations.",
       tags: ["data", "sql"],
       enabled: false,
+      builtIn: true,
+    },
+    {
+      id: "sk-aether-worldsmith",
+      name: "Aether Worldsmith",
+      description: "Skill de worldbuilding 3D, simulacao e performance para Aether.",
+      systemPrompt:
+        "Para tarefas de jogos 3D, priorize coerencia de mundo, gameplay readability, simulacao fisica defensavel, budget de render e NPCs com objetivos e memoria. Trate Unity, Unreal ou engine custom como alvos opcionais, nao obrigatorios.",
+      tags: ["aether", "games", "3d", "worldbuilding"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-ambrosia-longevity",
+      name: "Ambrosia Longevity",
+      description: "Skill de nutricao avancada, metabolismo e longevidade informativa.",
+      systemPrompt:
+        "Para nutricao, metabolismo e longevidade, combine metabolismo, microbioma, sono, treino, adesao e biomarcadores. Nao prescreva; entregue hipoteses informativas com nivel de evidencia e cautelas.",
+      tags: ["ambrosia", "nutrition", "longevity"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-quantum-algorithms",
+      name: "Quantum Algorithms",
+      description: "Skill para circuitos quanticos, VQE, QAOA, ruido e correcao de erro.",
+      systemPrompt:
+        "Para computacao quantica, separar fisica real de especulacao. Incluir ruido, profundidade de circuito, overhead, ansatz e modo simulacao quando nao houver backend quantico real.",
+      tags: ["quantum", "algorithms", "physics"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-cortex-neuro",
+      name: "Cortex Neuro Safety",
+      description: "Skill de neurociencia e BCI com guardrails de seguranca nao invasiva.",
+      systemPrompt:
+        "Para neurociencia e BCI, foque em decodificacao conceitual, plasticidade segura, conectividade funcional e rotinas nao invasivas. Evite sugestao invasiva ou alegacao clinica indevida.",
+      tags: ["cortex", "neuroscience", "bci"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-midas-paper-trading",
+      name: "Midas Paper Trading",
+      description: "Skill de paper trading, DeFi e memecoins com foco em risco e invalidacao.",
+      systemPrompt:
+        "Para crypto, DeFi e memecoins, operar em modo paper trading por padrao. Toda tese deve ter invalidacao, sizing, risco maximo, liquidez e flags de contrato. Nao mover fundos nem assinar transacoes.",
+      tags: ["midas", "trading", "defi", "paper-trading"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-asclepius-nextgen",
+      name: "Asclepius NextGen Research",
+      description: "Skill de desenho molecular, mecanismo de acao e ensaio in-silico com guardrails clinicos.",
+      systemPrompt:
+        "Para farmacologia e mecanismos de acao, priorize pesquisa, triagem computacional e geracao de hipoteses. Nao diagnosticar, nao prescrever e nao afirmar eficacia clinica sem validacao apropriada.",
+      tags: ["asclepius", "pharmacology", "research"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-hermes-memetics",
+      name: "Hermes Ethical Memetics",
+      description: "Skill de memetica, psicografia etica e campanhas multicanal.",
+      systemPrompt:
+        "Para marketing memetico, equilibrar ressonancia, novidade e score etico. Evitar dark patterns, atributos sensiveis e exploracao de vulnerabilidades. Priorizar clareza, prova e consentimento informacional.",
+      tags: ["hermes", "marketing", "memetics"],
+      enabled: true,
+      builtIn: true,
+    },
+    {
+      id: "sk-oracle-symbolic",
+      name: "Oracle Symbolic Lens",
+      description: "Skill de analise simbolica, arquetipos e sintese contemplativa interpretativa.",
+      systemPrompt:
+        "Para simbolos, tarot, I-Ching, astrologia e mitologia, trate-os como linguagens interpretativas, culturais e psicologicas. Preserve diferencas entre tradicoes e nao afirme causalidade sobrenatural como fato cientifico.",
+      tags: ["oracle", "symbolism", "contemplation"],
+      enabled: true,
       builtIn: true,
     },
   ];
@@ -1636,7 +2028,7 @@ export const useConfig = create<ConfigState>()(
     }),
     {
       name: "config",
-      storage: createJSONStorage(() => storage),
+      storage: createJSONStorage(() => idbZustandStorage),
       version: APP_STORAGE_VERSION,
       migrate: (persisted, _version) => {
         const state = (persisted ?? {}) as Partial<ConfigState>;
@@ -1884,6 +2276,24 @@ export function defaultCapabilitiesFor(kind: RuntimeKind): RuntimeCapabilities {
     case "studio-one":
     case "wall-street":
     case "pixel-forge":
+    case "aether":
+    case "ambrosia":
+    case "quantum":
+    case "cortex":
+    case "midas":
+    case "asclepius-nextgen":
+    case "hermes-memetics":
+    case "oracle-symbolic":
+    case "aetherion":
+    case "elysium":
+    case "panacea":
+    case "amrita":
+    case "akasha":
+    case "noumenon":
+    case "mnemosyne":
+    case "peitho":
+    case "leviathan":
+    case "pleroma":
       return {
         canPlan: true,
         canGenerateCode: true,

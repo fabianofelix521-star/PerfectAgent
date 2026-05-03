@@ -56,7 +56,18 @@ function read(agentId: string): Memory[] {
 
 function write(agentId: string, data: Memory[]): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key(agentId), JSON.stringify(data));
+  const serialized = JSON.stringify(data);
+  try {
+    localStorage.setItem(key(agentId), serialized);
+  } catch {
+    // Quota exceeded — keep most recent quarter and retry
+    try {
+      const quarter = JSON.stringify(data.slice(-Math.ceil(data.length / 4)));
+      localStorage.setItem(key(agentId), quarter);
+    } catch {
+      // Silent drop
+    }
+  }
 }
 
 function tokenize(input: string): string[] {

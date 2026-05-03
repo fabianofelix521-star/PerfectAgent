@@ -30,7 +30,10 @@ const ALL_KINDS: RuntimeKind[] = [
   "vulcan", "oracle", "nexus-prime", "hippocrates-supreme", "mendeleev",
   "prompt-forge", "silicon-valley", "unreal-forge", "aegis",
   "content-empire", "ad-commander", "studio-one", "wall-street",
-  "pixel-forge", "stigmergy-nexus",
+  "pixel-forge", "aether", "ambrosia", "quantum", "cortex", "midas",
+  "asclepius-nextgen", "hermes-memetics", "oracle-symbolic",
+  "aetherion", "elysium", "panacea", "amrita", "akasha", "noumenon",
+  "mnemosyne", "peitho", "leviathan", "pleroma", "stigmergy-nexus",
   "ephemeral-genesis", "supreme-coordinator", "custom", "generic",
 ];
 

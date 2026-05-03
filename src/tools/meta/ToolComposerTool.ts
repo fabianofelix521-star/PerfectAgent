@@ -5,6 +5,7 @@ import {
   NexusToolBase,
   type QualityAssessment,
 } from "@/tools/core/NexusToolBase";
+import { ToolRegistry } from "@/tools/core/ToolRegistry";
 import { asString, asStringArray, clamp01, keywordScore, mean, stableId } from "@/tools/core/toolUtils";
 
 interface ComposedPipeline {
@@ -146,7 +147,6 @@ export class ToolComposerTool extends NexusToolBase {
     pipeline: ComposedPipeline,
     input: NexusToolInput,
   ): Promise<ToolComposerResult["results"]> {
-    const { ToolRegistry } = await import("@/tools/core/ToolRegistry");
     const start = Date.now();
     const outputs: NexusToolOutput[] = [];
     for (const stage of pipeline.stages) {

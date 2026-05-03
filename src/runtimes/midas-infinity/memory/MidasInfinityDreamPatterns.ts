@@ -1,0 +1,17 @@
+export const MidasInfinityDreamPatterns = [
+  "midas-infinity:dream-pattern-1",
+  "midas-infinity:dream-pattern-2",
+  "midas-infinity:dream-pattern-3",
+  "midas-infinity:dream-pattern-4",
+  "midas-infinity:dream-pattern-5",
+  "midas-infinity:dream-pattern-6",
+  "midas-infinity:dream-pattern-7",
+  "midas-infinity:dream-pattern-8",
+  "midas-infinity:dream-pattern-9",
+  "midas-infinity:dream-pattern-10",
+  "midas-infinity:dream-pattern-11",
+  "midas-infinity:dream-pattern-12",
+  "midas-infinity:dream-pattern-13",
+  "midas-infinity:dream-pattern-14",
+  "midas-infinity:dream-pattern-15",
+] as const;

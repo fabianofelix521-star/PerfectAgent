@@ -83,9 +83,25 @@ function read(agentId: string): SemanticNode[] {
   }
 }
 
+const MAX_NODES = 300;
+
 function write(agentId: string, data: SemanticNode[]): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key(agentId), JSON.stringify(data));
+  const trimmed = data.length > MAX_NODES
+    ? data.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_NODES)
+    : data;
+  const serialized = JSON.stringify(trimmed);
+  try {
+    localStorage.setItem(key(agentId), serialized);
+  } catch {
+    // Quota exceeded — evict half and retry
+    try {
+      const half = JSON.stringify(trimmed.slice(0, Math.ceil(trimmed.length / 2)));
+      localStorage.setItem(key(agentId), half);
+    } catch {
+      // Storage completely full — silent drop to avoid crashing the UI
+    }
+  }
 }
 
 function extractEntityName(text: string): string | null {

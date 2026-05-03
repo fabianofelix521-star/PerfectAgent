@@ -43,6 +43,8 @@ import type {
   RuntimeEdge,
   RuntimeKind,
   RuntimeCapabilities,
+  Skill,
+  Tool,
 } from "@/types";
 import { cn } from "@/utils/cn";
 import { MorpheusPanel } from "@/components/MorpheusPanel";
@@ -93,6 +95,24 @@ const LOCAL_ADAPTER_KINDS = new Set<RuntimeKind>([
   "studio-one",
   "wall-street",
   "pixel-forge",
+  "aether",
+  "ambrosia",
+  "quantum",
+  "cortex",
+  "midas",
+  "asclepius-nextgen",
+  "hermes-memetics",
+  "oracle-symbolic",
+  "aetherion",
+  "elysium",
+  "panacea",
+  "amrita",
+  "akasha",
+  "noumenon",
+  "mnemosyne",
+  "peitho",
+  "leviathan",
+  "pleroma",
   "stigmergy-nexus",
   "ephemeral-genesis",
   "supreme-coordinator",
@@ -1075,6 +1095,96 @@ const RUNTIME_KIND_OPTIONS: Array<{
     desc: "Design gráfico, branding, UI, social, print, motion, AI image prompts e mockups.",
   },
   {
+    value: "aether",
+    label: "Aether · Hyperreal 3D Swarm",
+    desc: "Mundos procedurais, simulacao fisica, NPCs cognitivos e budget de render para jogos 3D hiper-realistas.",
+  },
+  {
+    value: "ambrosia",
+    label: "Ambrosia · Nutrition Intelligence",
+    desc: "Metabolismo, microbioma, sinergia de nutrientes e longevidade em modo informativo.",
+  },
+  {
+    value: "quantum",
+    label: "Quantum · Algorithmic Swarm",
+    desc: "Circuitos quanticos, Hamiltonianos, correcao de erro e otimizacao hibrida quantico-classica.",
+  },
+  {
+    value: "cortex",
+    label: "Cortex · Neuro Cognition",
+    desc: "Neurociencia, BCI conceitual, plasticidade e aumento cognitivo seguro e nao invasivo.",
+  },
+  {
+    value: "midas",
+    label: "Midas · Paper Trading Swarm",
+    desc: "Crypto, DeFi e memecoins com analise on-chain e paper trading por padrao.",
+  },
+  {
+    value: "asclepius-nextgen",
+    label: "Asclepius NextGen · Molecular Research",
+    desc: "Descoberta molecular, mecanismos de acao, sinergia e ensaios in-silico, sem prescricao clinica.",
+  },
+  {
+    value: "hermes-memetics",
+    label: "Hermes NextGen · Ethical Memetics",
+    desc: "Poly-marketing etico, psicografia segura, campanhas multicanal e dinamica memetica.",
+  },
+  {
+    value: "oracle-symbolic",
+    label: "Oracle NextGen · Symbolic Wisdom",
+    desc: "Arquetipos, sistemas simbolicos, meditacao segura e sintese contemplativa sem alegacoes sobrenaturais.",
+  },
+  {
+    value: "aetherion",
+    label: "Aetherion · Hyperdimensional Engineering",
+    desc: "Arquitetura de software e sistemas com foco em verificacao, resiliencia e evolucao autonoma.",
+  },
+  {
+    value: "elysium",
+    label: "Elysium · Reality Forge",
+    desc: "Criacao de mundos hiper-realistas com simulacao, narrativa emergente e persistencia sistemica.",
+  },
+  {
+    value: "panacea",
+    label: "Panacea · Molecular Medicine",
+    desc: "Raciocinio medico molecular-sistemico para descoberta de hipoteses em modo pesquisa.",
+  },
+  {
+    value: "amrita",
+    label: "Amrita · Molecular Nutrition",
+    desc: "Otimizacao nutricional de precisao integrando metabolismo, microbioma e crononutricao.",
+  },
+  {
+    value: "akasha",
+    label: "Akasha · Wisdom Cartography",
+    desc: "Cartografia de tradicoes simbolicas e contemplativas com sintese comparativa responsavel.",
+  },
+  {
+    value: "noumenon",
+    label: "Noumenon · Fundamental Physics",
+    desc: "Fisica teorica de fronteira com rigor formal, simulacao e filtro anti-pseudociencia.",
+  },
+  {
+    value: "mnemosyne",
+    label: "Mnemosyne · Neuro Engineering",
+    desc: "Neurociencia multinivel para cognicao, plasticidade e estrategias de performance mental.",
+  },
+  {
+    value: "peitho",
+    label: "Peitho · Ethical Persuasion",
+    desc: "Marketing neuro-aware com persuacao etica, jornada emocional e crescimento orientado a confianca.",
+  },
+  {
+    value: "leviathan",
+    label: "Leviathan · Crypto Apex",
+    desc: "Analise de mercados crypto com forense on-chain, edge probabilistico e soberania de risco.",
+  },
+  {
+    value: "pleroma",
+    label: "Pleroma · Meta-Cognitive Orchestrator",
+    desc: "Orquestrador cross-runtime para roteamento inteligente, sintese emergente e meta-aprendizado.",
+  },
+  {
     value: "stigmergy-nexus",
     label: "Stigmergy Vectorial Nexus",
     desc: "Runtime reativo baseado em estado compartilhado vetorial e cascata Processor → Reviewer.",
@@ -1122,11 +1232,28 @@ function RuntimeKindBlock({
   const providers = useConfig((s) => s.providers);
   const models = useConfig((s) => s.models);
   const studioSelection = useConfig((s) => s.studioSelection);
+  const allSkills = useConfig((s) => s.skills ?? []);
+  const allTools = useConfig((s) => s.tools ?? []);
   const [testing, setTesting] = useState(false);
   const [testingCode, setTestingCode] = useState(false);
   const kind: RuntimeKind = active.kind ?? "langgraph-dag";
   const caps: RuntimeCapabilities =
     active.capabilities ?? defaultCapabilitiesFor(kind);
+
+  const linkedSkills: Skill[] = useMemo(
+    () =>
+      (active.skillIds ?? [])
+        .map((id) => allSkills.find((skill) => skill.id === id))
+        .filter((skill): skill is Skill => skill !== undefined),
+    [active.skillIds, allSkills],
+  );
+  const linkedTools: Tool[] = useMemo(
+    () =>
+      (active.toolIds ?? [])
+        .map((id) => allTools.find((tool) => tool.id === id))
+        .filter((tool): tool is Tool => tool !== undefined),
+    [active.toolIds, allTools],
+  );
 
   function resolveActiveLlm() {
     return resolveRuntimeLlmConfig(active, {
@@ -1306,6 +1433,40 @@ function RuntimeKindBlock({
           )}
         </div>
       </div>
+
+      {(linkedSkills.length > 0 || linkedTools.length > 0) && (
+        <div className="mt-4 rounded-[20px] border border-white/70 bg-white/50 p-3">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+            Skills &amp; Tools Vinculados
+          </h4>
+          {linkedSkills.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {linkedSkills.map((skill) => (
+                <span
+                  key={skill.id}
+                  title={skill.description}
+                  className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700"
+                >
+                  ◆ {skill.name}
+                </span>
+              ))}
+            </div>
+          )}
+          {linkedTools.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {linkedTools.map((tool) => (
+                <span
+                  key={tool.id}
+                  title={tool.description}
+                  className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-700"
+                >
+                  ⚡ {tool.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {lastTest && (
         <p className="mt-3 text-xs font-medium text-slate-500">

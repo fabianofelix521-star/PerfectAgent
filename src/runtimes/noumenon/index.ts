@@ -1,0 +1,11 @@
+export { NoumenonRuntime } from "@/runtimes/noumenon/NoumenonRuntime";
+export { QuantumMechanicsFoundationAgent } from "@/runtimes/noumenon/agents/QuantumMechanicsFoundationAgent";
+export { QuantumFieldTheoryArchmageAgent } from "@/runtimes/noumenon/agents/QuantumFieldTheoryArchmageAgent";
+export { GeneralRelativityGeometerAgent } from "@/runtimes/noumenon/agents/GeneralRelativityGeometerAgent";
+export { QuantumGravityFrontierAgent } from "@/runtimes/noumenon/agents/QuantumGravityFrontierAgent";
+export { QuantumInformationArchitectAgent } from "@/runtimes/noumenon/agents/QuantumInformationArchitectAgent";
+export { CosmologyArchitectAgent } from "@/runtimes/noumenon/agents/CosmologyArchitectAgent";
+export { ParticlePhenomenologistAgent } from "@/runtimes/noumenon/agents/ParticlePhenomenologistAgent";
+export { ManyBodyCondensedMatterAgent } from "@/runtimes/noumenon/agents/ManyBodyCondensedMatterAgent";
+export { QuantumThermodynamicsAgent } from "@/runtimes/noumenon/agents/QuantumThermodynamicsAgent";
+export { PseudoscienceDebunkerAgent } from "@/runtimes/noumenon/agents/PseudoscienceDebunkerAgent";

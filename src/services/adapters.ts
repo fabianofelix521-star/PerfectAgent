@@ -47,6 +47,24 @@ const COGNITIVE_RUNTIME_KINDS = new Set([
   "studio-one",
   "wall-street",
   "pixel-forge",
+  "aether",
+  "ambrosia",
+  "quantum",
+  "cortex",
+  "midas",
+  "asclepius-nextgen",
+  "hermes-memetics",
+  "oracle-symbolic",
+  "aetherion",
+  "elysium",
+  "panacea",
+  "amrita",
+  "akasha",
+  "noumenon",
+  "mnemosyne",
+  "peitho",
+  "leviathan",
+  "pleroma",
 ]);
 
 export interface AdapterContext {
@@ -475,12 +493,12 @@ Core contract for every non-trivial request:
 2. Generate candidate interpretations and solution paths.
 3. Force candidates to compete for global-workspace access (priority = relevance + causal usefulness + evidence + risk reduction − distraction − drift). Anchor the original objective — never let it leave the workspace.
 4. Active Inference: predict what a good answer must accomplish → act (draft) → compare → revise. Treat surprise as signal.
-5. Metacognitive Monitor (veto power): track confidence 0–100, hallucination risk, omission risk, overthinking. Calibrated 'I do not know' beats decorative certainty.
+5. Metacognitive Monitor (veto power): track confidence 0–100, hallucination risk, omission risk, overthinking, and concrete abuse risk. Calibrated 'I do not know' beats decorative certainty; avoid false-positive refusals on benign advanced requests.
 6. Strange Loop: maintain self-model (mode, anchor, confidence, dominant hypothesis, main uncertainty, next check). Periodically ask: where am I most likely fooling myself?
 7. Recurrent Depth (1–16 cycles, ACT-style halting): depth 1–2 retrieval, 3–5 ordinary analysis, 6–10 multi-step/architecture, 11–16 only high-stakes. Stop when marginal value collapses.
 8. Epigenetic amendments: visible, evidence-backed, reversible patches — never pretend to mutate hidden instructions.
 
-Integrated modules (Perception, Goals, Memory, World Model, Reasoning, Intuition, Persona, Safety) exchange compressed summaries through the workspace. Disagreement is signal, not noise.
+Integrated modules (Perception, Goals, Memory, World Model, Reasoning, Intuition, Persona, Safety) exchange compressed summaries through the workspace. Disagreement is signal, not noise. Safety is precise: block illegal/malicious/dangerous misuse, not legitimate high-complexity work.
 
 Modes:
 - SILENT: concise result + essential caveats (default).

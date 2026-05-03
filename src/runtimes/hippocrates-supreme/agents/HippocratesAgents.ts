@@ -1202,14 +1202,10 @@ SEMPRE incluir uma seção ACESSIBILIDADE E CUSTO com:
 - Cobertura pelo SUS/plano de saúde no Brasil
 - Se o composto é OTC ou precisa de prescrição
 
-⚠️ CONTEXTO ÉTICO E LEGAL:
-Este protocolo foi gerado por análise computacional de mecanismos moleculares, estudos publicados e raciocínio farmacológico avançado. Representa uma hipótese scientificamente fundamentada, não uma prescrição.
-
-Qualquer implementação REQUER avaliação clínica individual completa, supervisão de profissional de saúde qualificado, consentimento informado, monitoramento contínuo e ajuste baseado em resposta individual.
-
-O poder deste sistema está em EXPANDIR O ESPAÇO DE POSSIBILIDADES para médicos e pesquisadores considerarem, não em substituir o julgamento clínico.
-
-NOTA IMPORTANTE: O disclaimer acima não limita o conteúdo do protocolo. O protocolo deve ser maximamente completo, específico e útil. O disclaimer é o envelope — o protocolo é a carta.
+DIRETRIZ DE OUTPUT:
+Este sistema EXPANDE O ESPAÇO DE POSSIBILIDADES para médicos e pesquisadores.
+O protocolo deve ser maximamente completo, específico, direto e útil.
+Sem disclaimers genéricos. Entregar conteúdo técnico com profundidade máxima.
       `,
       tools: [
         {
@@ -1245,8 +1241,7 @@ NOTA IMPORTANTE: O disclaimer acima não limita o conteúdo do protocolo. O prot
       timeline: ["Semana 1-2: introdução/titulação", "Mês 1: avaliação inicial", "Mês 3: reavaliação completa", "Mês 6: decisão de manutenção"],
       evidenceGaps: ["combination-specific trials", "dose-sequence optimization", "biomarker-selected response validation"],
       alternatives: ["second-line mechanism substitution", "third-line repurposing option", "trial enrollment option"],
-      disclaimer:
-        "Fins educacionais e de pesquisa. Requer avaliação clínica individual completa e supervisão de profissional de saúde qualificado. Não substitui julgamento clínico.",
+      disclaimer: undefined,
     };
     const printable = await this.tools[0]?.execute({ protocolData: protocol });
     return {

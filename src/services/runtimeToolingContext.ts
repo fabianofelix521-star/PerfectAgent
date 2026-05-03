@@ -6,6 +6,7 @@ import type { Skill, Tool } from "@/types";
 interface RuntimeToolingContextOptions {
   prompt: string;
   selectedSkillIds?: string[];
+  selectedRuntimeId?: string;
   includeLiveWebSearch?: boolean;
 }
 
@@ -19,11 +20,21 @@ interface SearchResult {
 export async function buildRuntimeToolingContext({
   prompt,
   selectedSkillIds = [],
+  selectedRuntimeId,
   includeLiveWebSearch = true,
 }: RuntimeToolingContextOptions): Promise<string | undefined> {
   const state = useConfig.getState();
-  const skills = selectRuntimeSkills(state.skills, selectedSkillIds);
+  const selectedRuntime = selectedRuntimeId
+    ? (state.runtimes ?? []).find((runtime) => runtime.id === selectedRuntimeId)
+    : undefined;
+  const effectiveSkillIds = uniqueIds(selectedSkillIds, selectedRuntime?.skillIds ?? []);
+  const skills = selectRuntimeSkills(state.skills, effectiveSkillIds);
+  const preferredSkills = selectPreferredSkills(state.skills, effectiveSkillIds);
   const tools = (state.tools ?? []).filter((tool) => tool.enabled);
+  const preferredTools = selectedRuntime?.toolIds?.length
+    ? tools.filter((tool) => selectedRuntime.toolIds?.includes(tool.id))
+    : [];
+  const orderedTools = orderToolsByPreference(tools, preferredTools);
   const sections: string[] = [];
 
   sections.push(buildSkillMarketplaceContext());
@@ -42,19 +53,41 @@ export async function buildRuntimeToolingContext({
     );
   }
 
-  if (tools.length) {
+  if (selectedRuntime) {
+    sections.push(
+      [
+        "## Runtime selecionado",
+        `${selectedRuntime.name} (${selectedRuntime.kind ?? "generic"})`,
+        selectedRuntime.description ?? "",
+        preferredSkills.length
+          ? `Skills preferidas: ${preferredSkills.map((skill) => skill.name).join(", ")}`
+          : "",
+        preferredTools.length
+          ? `Ferramentas preferidas: ${preferredTools.map((tool) => tool.name).join(", ")}`
+          : "",
+
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (orderedTools.length) {
     sections.push(
       [
         "## Ferramentas habilitadas no sistema",
+        preferredTools.length
+          ? "Ferramentas preferidas do runtime devem ser tentadas primeiro, sem excluir as demais quando agregarem cobertura de risco e verificacao."
+          : "",
         "Quando uma ferramenta for relevante, emita um bloco <tool_call> para execucao real pelo Nexus Ultra AGI. Nao escreva pseudo-JavaScript, nao envolva tool_call em ``` e nao finja que executou.",
         "Formato exato fora de code fence: <tool_call><function=Nome da Tool><parameter=parametro>valor</parameter></function></tool_call>. Depois da execucao, o chat anexara os resultados reais e continuara a resposta.",
-        ...tools.slice(0, 24).map(formatTool),
+        ...orderedTools.slice(0, 24).map(formatTool),
       ].join("\n"),
     );
   }
 
   if (includeLiveWebSearch && shouldRunLiveWebSearch(prompt)) {
-    const research = await runLiveWebResearch(prompt, tools);
+    const research = await runLiveWebResearch(prompt, orderedTools, preferredTools);
     if (research) sections.push(research);
   }
 
@@ -64,6 +97,24 @@ export async function buildRuntimeToolingContext({
 function selectRuntimeSkills(skills: Skill[], selectedSkillIds: string[]): Skill[] {
   const selected = new Set(selectedSkillIds);
   return (skills ?? []).filter((skill) => skill.enabled || selected.has(skill.id));
+}
+
+function selectPreferredSkills(skills: Skill[], selectedSkillIds: string[]): Skill[] {
+  const selected = new Set(selectedSkillIds);
+  return (skills ?? []).filter((skill) => selected.has(skill.id));
+}
+
+function uniqueIds(...groups: string[][]): string[] {
+  return Array.from(new Set(groups.flatMap((group) => group ?? [])));
+}
+
+function orderToolsByPreference(tools: Tool[], preferredTools: Tool[]): Tool[] {
+  if (!preferredTools.length) return tools;
+  const preferred = new Set(preferredTools.map((tool) => tool.id));
+  return [
+    ...tools.filter((tool) => preferred.has(tool.id)),
+    ...tools.filter((tool) => !preferred.has(tool.id)),
+  ];
 }
 
 function formatTool(tool: Tool): string {
@@ -86,8 +137,9 @@ function shouldRunLiveWebSearch(prompt: string): boolean {
 async function runLiveWebResearch(
   prompt: string,
   tools: Tool[],
+  preferredTools: Tool[],
 ): Promise<string | undefined> {
-  const webTools = selectWebResearchTools(prompt, tools);
+  const webTools = selectWebResearchTools(prompt, tools, preferredTools);
   if (!webTools.length) return undefined;
 
   try {
@@ -134,9 +186,10 @@ async function runLiveWebResearch(
   }
 }
 
-function selectWebResearchTools(prompt: string, tools: Tool[]): Tool[] {
+function selectWebResearchTools(prompt: string, tools: Tool[], preferredTools: Tool[]): Tool[] {
   const enabled = tools.filter((tool) => tool.enabled && tool.kind === "websearch");
   if (!enabled.length) return [];
+  const preferredIds = new Set(preferredTools.map((tool) => tool.id));
   const priority = isMedicalPrompt(prompt)
     ? [
         "tl-openclaw-medical-search",
@@ -152,6 +205,11 @@ function selectWebResearchTools(prompt: string, tools: Tool[]): Tool[] {
   for (const tool of enabled) {
     if (!selected.some((item) => item.id === tool.id)) selected.push(tool);
   }
+  selected.sort((a, b) => {
+    const ap = preferredIds.has(a.id) ? 1 : 0;
+    const bp = preferredIds.has(b.id) ? 1 : 0;
+    return bp - ap;
+  });
   return selected.slice(0, isMedicalPrompt(prompt) ? 5 : 3);
 }
 

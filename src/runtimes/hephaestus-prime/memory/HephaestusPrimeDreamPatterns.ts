@@ -1,0 +1,17 @@
+export const HephaestusPrimeDreamPatterns = [
+  "hephaestus-prime:dream-pattern-1",
+  "hephaestus-prime:dream-pattern-2",
+  "hephaestus-prime:dream-pattern-3",
+  "hephaestus-prime:dream-pattern-4",
+  "hephaestus-prime:dream-pattern-5",
+  "hephaestus-prime:dream-pattern-6",
+  "hephaestus-prime:dream-pattern-7",
+  "hephaestus-prime:dream-pattern-8",
+  "hephaestus-prime:dream-pattern-9",
+  "hephaestus-prime:dream-pattern-10",
+  "hephaestus-prime:dream-pattern-11",
+  "hephaestus-prime:dream-pattern-12",
+  "hephaestus-prime:dream-pattern-13",
+  "hephaestus-prime:dream-pattern-14",
+  "hephaestus-prime:dream-pattern-15",
+] as const;

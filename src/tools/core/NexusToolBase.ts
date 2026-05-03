@@ -1,5 +1,6 @@
 import { ToolAnalytics } from "@/tools/core/ToolAnalytics";
 import { ToolMemory } from "@/tools/core/ToolMemory";
+import { ToolRegistry } from "@/tools/core/ToolRegistry";
 
 export interface NexusToolInput {
   params: Record<string, unknown>;
@@ -205,7 +206,6 @@ export abstract class NexusToolBase {
     if (input.context.executionDepth > 5) {
       throw new Error("Tool collaboration depth exceeded");
     }
-    const { ToolRegistry } = await import("@/tools/core/ToolRegistry");
     const tool = ToolRegistry.get(toolId);
     if (!tool) throw new Error(`Tool ${toolId} não encontrada`);
     this.metrics.collaborationsInitiated++;
