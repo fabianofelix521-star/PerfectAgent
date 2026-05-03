@@ -135,6 +135,7 @@ run_remote_root "cat > '$REMOTE_DIR/shared/nexus-ultra-agi.env' <<'ENV'
 NODE_ENV=production
 PORT=$PORT
 NEXUS_AUTH_KEY=$NEXUS_AUTH_KEY
+NEXUS_AUTH_COOKIE_SECURE=${NEXUS_AUTH_COOKIE_SECURE:-true}
 ENV
 chmod 600 '$REMOTE_DIR/shared/nexus-ultra-agi.env'
 chown root:root '$REMOTE_DIR/shared/nexus-ultra-agi.env'
