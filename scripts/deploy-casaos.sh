@@ -8,7 +8,9 @@ REMOTE_DIR="${DEPLOY_DIR:-/DATA/AppData/nexus-ultra-agi}"
 SERVICE_NAME="${DEPLOY_SERVICE:-nexus-ultra-agi}"
 PORT="${PORT:-3336}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
+SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/felixcrow_casaos_ed25519}"
 SSH_OPTS=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+[[ -f "$SSH_KEY" ]] && SSH_OPTS+=(-i "$SSH_KEY")
 
 control_dir="${NEXUS_SSH_CONTROL_DIR:-${TMPDIR:-/tmp}}"
 if ((${#control_dir} > 24)); then
